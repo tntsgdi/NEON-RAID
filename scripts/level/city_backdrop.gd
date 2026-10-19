@@ -1,0 +1,45 @@
+class_name CityBackdrop
+extends Node2D
+## 灰盒阶段的远景：两层视差的楼宇剪影，只为看清速度感，不是正式美术。
+
+var tint := Color(0.06, 0.08, 0.12)
+var height := 200.0
+var seed_value := 1
+var window_color := Color(0.25, 0.85, 0.95, 0.25)
+
+
+static func make() -> Node2D:
+	var root := Node2D.new()
+	root.name = "Backdrop"
+	root.add_child(_layer(Vector2(0.15, 0.3), Color(0.04, 0.05, 0.08), 260.0, 7))
+	root.add_child(_layer(Vector2(0.4, 0.6), Color(0.06, 0.08, 0.12), 180.0, 3))
+	return root
+
+
+static func _layer(scroll: Vector2, col: Color, h: float, s: int) -> Parallax2D:
+	var p := Parallax2D.new()
+	p.scroll_scale = scroll
+	p.repeat_size = Vector2(800, 0)
+	p.repeat_times = 4
+	p.z_index = -10
+	var b := CityBackdrop.new()
+	b.tint = col
+	b.height = h
+	b.seed_value = s
+	p.add_child(b)
+	return p
+
+
+func _draw() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var x := 0.0
+	while x < 800.0:
+		var w := rng.randf_range(30, 80)
+		var h := rng.randf_range(height * 0.4, height)
+		var r := Rect2(x, -h, w - 4, h + 200)
+		draw_rect(r, tint)
+		for i in rng.randi_range(2, 8):
+			var wp := Vector2(x + rng.randf_range(4, w - 10), -h + rng.randf_range(8, h - 10))
+			draw_rect(Rect2(wp, Vector2(2, 1)), window_color)
+		x += w
