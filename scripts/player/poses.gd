@@ -12,6 +12,8 @@ const JUMP := {"hip_y": 0.0, "torso": 8.0, "head": -6.0, "thigh_f": -55.0, "shin
 const FALL := {"hip_y": 0.0, "torso": 2.0, "head": -4.0, "thigh_f": -25.0, "shin_f": 35.0, "thigh_b": 15.0, "shin_b": 55.0, "uarm_f": -70.0, "farm_f": -20.0, "uarm_b": 70.0, "farm_b": -15.0}
 const DASH := {"hip_y": 4.0, "torso": 45.0, "head": -30.0, "thigh_f": -30.0, "shin_f": 60.0, "thigh_b": 50.0, "shin_b": 35.0, "uarm_f": 60.0, "farm_f": -10.0, "uarm_b": 75.0, "farm_b": -10.0}
 const SLIDE := {"hip_y": 11.0, "torso": -25.0, "head": 12.0, "thigh_f": -80.0, "shin_f": 0.0, "thigh_b": -30.0, "shin_b": 100.0, "uarm_f": 40.0, "farm_f": -30.0, "uarm_b": 50.0, "farm_b": -20.0}
+## 急转刹车：身体后仰顶住惯性，前腿撑地
+const SKID := {"hip_y": 4.0, "torso": -16.0, "head": 8.0, "thigh_f": -50.0, "shin_f": 8.0, "thigh_b": 25.0, "shin_b": 60.0, "uarm_f": -30.0, "farm_f": -30.0, "uarm_b": -40.0, "farm_b": -20.0}
 const WALL := {"hip_y": 2.0, "torso": -4.0, "head": 4.0, "thigh_f": -45.0, "shin_f": 75.0, "thigh_b": 10.0, "shin_b": 60.0, "uarm_f": -20.0, "farm_f": -30.0, "uarm_b": 95.0, "farm_b": -20.0}
 
 ## 跑步：单腿 8 个相位样本 [大腿, 小腿]；后腿错开半个周期。

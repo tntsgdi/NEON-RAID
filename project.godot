@@ -12,6 +12,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 Tuning="*res://scripts/core/tuning.gd"
 I18n="*res://scripts/core/i18n.gd"
+Audio="*res://scripts/core/audio.gd"
 Controls="*res://scripts/core/controls.gd"
 
 [display]
@@ -31,6 +32,7 @@ rendering/root_node_layout_direction=1
 [physics]
 
 common/physics_ticks_per_second=120
+common/physics_interpolation=true
 common/max_physics_steps_per_frame=16
 
 [rendering]
@@ -38,5 +40,4 @@ common/max_physics_steps_per_frame=16
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
-2d/snap/snap_2d_transforms_to_pixel=true
 environment/defaults/default_clear_color=Color(0.02, 0.025, 0.04, 1)

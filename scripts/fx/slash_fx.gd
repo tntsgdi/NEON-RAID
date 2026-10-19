@@ -20,7 +20,7 @@ static func spawn(parent: Node, pos: Vector2, from_deg: float, to_deg: float, fa
 	fx.a1 = _world(to_deg, facing)
 	fx.reach = reach_px
 	fx.heavy = is_heavy
-	fx.life = 0.17 if is_heavy else 0.13
+	fx.life = 0.2 if is_heavy else 0.15
 	fx.z_index = 5
 	parent.add_child(fx)
 
@@ -41,13 +41,13 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var k := 1.0 - _t / life
 	var n := 16
-	var inner := reach * lerpf(0.55, 0.92, 1.0 - k)
+	var inner := reach * lerpf(0.4, 0.9, 1.0 - k)
 	var pts := PackedVector2Array()
 	for i in n + 1:
 		pts.append(Vector2.from_angle(lerpf(a0, a1, float(i) / n)) * reach)
 	var outer := pts.duplicate()
 	for i in range(n, -1, -1):
 		pts.append(Vector2.from_angle(lerpf(a0, a1, float(i) / n)) * inner)
-	var col := Color(0.55, 1.0, 1.0, 0.75 * k) if not heavy else Color(0.85, 1.0, 1.0, 0.85 * k)
+	var col := Color(0.45, 0.95, 1.0, 0.85 * k) if not heavy else Color(0.8, 1.0, 1.0, 0.95 * k)
 	draw_colored_polygon(pts, col)
-	draw_polyline(outer, Color(1, 1, 1, k), 1.0)
+	draw_polyline(outer, Color(1, 1, 1, k), 2.0 if heavy else 1.5, true)

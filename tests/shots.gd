@@ -31,10 +31,10 @@ func _run() -> void:
 		["dash", Vector2(200, 0), Vector2(260, 0), [{"frames": 12, "move": R, "press": ["dash"]}]],
 		["slide", Vector2(300, 0), Vector2(260, 0), [{"frames": 14, "move": R, "press": ["slide"], "hold": ["slide"]}]],
 		["wall", Vector2(2058, -200), Vector2.ZERO, [{"frames": 40, "move": R}]],
-		["slash", Vector2(2228, -260), Vector2.ZERO, [
+		["slash", Vector2(352, 0), Vector2.ZERO, [
 			{"frames": 2, "aim": R},
 			{"frames": 1, "press": ["slash"]},
-			{"until": func(p): return p.slash_step == 0 and p._slash_time > 0.09, "max": 120},
+			{"until": func(p): return p.slash_step == 0 and p._slash_time > 0.1, "max": 120},
 		]],
 	]
 	var full := Image.create(480 * 4, 270 * 2, false, Image.FORMAT_RGBA8)

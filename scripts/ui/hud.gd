@@ -36,14 +36,14 @@ func _label(pos: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
 	return l
 
 
-func refresh(section_key: String, run_time: float, best: float, speed: float, finished: bool) -> void:
+func refresh(section_key: String, run_time: float, best: float, speed: float, finished: bool, mode_key: String) -> void:
 	_section.text = tr(section_key)
 	_time.text = tr("HUD_TIME") % _fmt(run_time)
-	var right := tr("HUD_SPEED") % int(round(speed))
+	var right := tr("HUD_SPEED") % int(round(speed)) + "\n" + tr(mode_key)
 	if best >= 0.0:
 		right += "\n" + tr("HUD_BEST") % _fmt(best)
 	_speed.text = right
-	_speed.size.y = 30
+	_speed.size.y = 40
 	_hint.text = tr("HUD_HINT")
 	_finish.visible = finished
 	_finish.text = tr("HUD_FINISH") % _fmt(run_time)

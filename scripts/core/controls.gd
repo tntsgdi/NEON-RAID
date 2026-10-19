@@ -12,6 +12,7 @@ const KEYS := {
 	"restart": [KEY_R],
 	"tuning": [KEY_F1],
 	"language": [KEY_F2],
+	"render_mode": [KEY_F3],
 }
 
 const MOUSE := {

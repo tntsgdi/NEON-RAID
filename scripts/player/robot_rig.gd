@@ -29,7 +29,7 @@ func _ready() -> void:
 	_part(torso, "head", "head", Vector2(0, -13), 9, 8, FILL, EDGE, 0)
 	var ub := _part(torso, "uarm_b", "limb", Vector2(0, -11), 8, 4, FILL_BACK, EDGE_BACK, -2)
 	var fb := _part(ub, "farm_b", "limb", Vector2(0, 8), 7, 3, FILL_BACK, EDGE_BACK, 0)
-	_part(fb, "blade", "blade", Vector2(0, 7), 15, 2, FILL, BLADE, 0)
+	_part(fb, "blade", "blade", Vector2(0, 7), 21, 2, FILL, BLADE, 0)
 	_leg(hip, "f", 1, FILL, EDGE)
 	var uf := _part(torso, "uarm_f", "limb", Vector2(0, -11), 8, 4, FILL, EDGE, 3)
 	var ff := _part(uf, "farm_f", "limb", Vector2(0, 8), 7, 3, FILL, EDGE, 0)
@@ -100,6 +100,13 @@ func swing_blade(local_deg: float) -> void:
 
 func release_blade() -> void:
 	parts.uarm_b.z_index = -2
+
+
+## 刀身根部与刀尖的全局坐标（刀光拖尾用）
+func blade_points() -> Array:
+	var b: RigPart = parts.blade
+	var y := b.global_transform.y.normalized()
+	return [b.global_position + y * 5.0, b.global_position + y * (b.length + 1.0)]
 
 
 func set_glow(value: float) -> void:

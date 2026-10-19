@@ -7,6 +7,8 @@ extends CharacterBody2D
 signal landed(impact: float)
 signal state_changed(from: int, to: int)
 signal slash_hit(target: Node)
+## 请求震屏（强度约 1–8 像素）
+signal impact(strength: float)
 
 enum State { GROUND, AIR, DASH, SLIDE, WALL }
 const STATE_NAMES := ["ground", "air", "dash", "slide", "wall"]
@@ -14,6 +16,8 @@ const STATE_NAMES := ["ground", "air", "dash", "slide", "wall"]
 const CHEST := Vector2(0, -26)
 const STAND := Vector2(12, 36)
 const LOW := Vector2(12, 16)
+const ASSIST_RANGE := 64.0
+const ASSIST_ANGLE := 45.0
 
 var input: PlayerInput = DeviceInput.new()
 var state := State.AIR
@@ -33,10 +37,17 @@ var _dash_dir := Vector2.RIGHT
 var _ghost_timer := 0.0
 var _slide_time := 0.0
 var _wall_dir := 0
+var _wall_coyote := 0.0
+var _last_wall := 0
 var _wall_lock := 0.0
 var _land_squash := 0.0
 var _run_phase := 0.0
 var _idle_time := 0.0
+var _squash := Vector2.ONE
+var _prev_vx := 0.0
+var _lean := 0.0
+var _skid_dust := 0.0
+var _air_hang_used := false
 
 # 挥刀层
 var slash_step := -1
@@ -51,6 +62,7 @@ var _combo_window := 0.0
 var _rect: RectangleShape2D
 var _shape: CollisionShape2D
 var rig: RobotRig
+var trail: BladeTrail
 
 
 func _ready() -> void:
@@ -66,6 +78,9 @@ func _ready() -> void:
 	add_child(rig)
 	if fx_parent == null:
 		fx_parent = get_parent()
+	trail = BladeTrail.new()
+	trail.z_index = 5
+	fx_parent.add_child.call_deferred(trail)
 
 
 func reset_at(pos: Vector2) -> void:
@@ -77,9 +92,12 @@ func reset_at(pos: Vector2) -> void:
 	_dash_left = 0.0
 	_jump_buffer = 0.0
 	_wall_lock = 0.0
+	_wall_coyote = 0.0
+	_squash = Vector2.ONE
 	_air_dashes = int(Tuning.v.air_dashes)
 	last_floor_x = pos.x
 	_set_state(State.AIR)
+	reset_physics_interpolation()
 
 
 func _physics_process(delta: float) -> void:
@@ -90,6 +108,7 @@ func _physics_process(delta: float) -> void:
 	_jump_buffer = T.jump_buffer if input.jump_pressed else maxf(_jump_buffer - delta, 0.0)
 	_dash_cd = maxf(_dash_cd - delta, 0.0)
 	_wall_lock = maxf(_wall_lock - delta, 0.0)
+	_wall_coyote = maxf(_wall_coyote - delta, 0.0)
 	_cut_immune = maxf(_cut_immune - delta, 0.0)
 	_land_squash = maxf(_land_squash - delta * 8.0, 0.0)
 	_idle_time += delta
@@ -108,10 +127,12 @@ func _physics_process(delta: float) -> void:
 
 	var vy_before := velocity.y
 	move_and_slide()
+	_ledge_assist()
 	_after_move(vy_before, T)
 	_update_slash(delta, T)
 	_update_facing()
 	_animate(delta, T)
+	_prev_vx = velocity.x
 
 
 # ---------------------------------------------------------------- 状态
@@ -134,12 +155,15 @@ func _air(delta: float, T: Dictionary) -> void:
 	_coyote = maxf(_coyote - delta, 0.0)
 	_run_x(delta, T.air_accel, T.air_decel, T.air_accel * 1.5, T)
 	_wall_dir = touching_wall()
+	if _wall_dir != 0:
+		_wall_coyote = 0.1
+		_last_wall = _wall_dir
 	if _jump_buffer > 0.0:
 		if _coyote > 0.0:
 			_jump(T)
 			return
-		if _wall_dir != 0:
-			_wall_jump(T)
+		if _wall_coyote > 0.0:
+			_wall_jump(T, _last_wall)
 			return
 	if input.dash_pressed and _air_dashes > 0 and _dash_cd <= 0.0:
 		_start_dash(T)
@@ -147,17 +171,21 @@ func _air(delta: float, T: Dictionary) -> void:
 	if _wall_dir != 0 and velocity.y > 0.0 and _dir_x() == _wall_dir and _wall_lock <= 0.0:
 		_set_state(State.WALL)
 		_air_dashes = int(T.air_dashes)
+		_air_hang_used = false
 	_gravity(delta, T.max_fall, T)
 
 
 func _wall(delta: float, T: Dictionary) -> void:
 	_wall_dir = touching_wall()
+	if _wall_dir != 0:
+		_wall_coyote = 0.1
+		_last_wall = _wall_dir
 	if _wall_dir == 0 or _dir_x() != _wall_dir:
 		_set_state(State.AIR)
 		_gravity(delta, T.max_fall, T)
 		return
 	if _jump_buffer > 0.0:
-		_wall_jump(T)
+		_wall_jump(T, _wall_dir)
 		return
 	if input.dash_pressed and _dash_cd <= 0.0:
 		_start_dash(T)
@@ -173,8 +201,8 @@ func _dash(delta: float, T: Dictionary) -> void:
 		velocity.y = 5.0  # 贴着地面冲刺时保持落地判定
 	_ghost_timer -= delta
 	if _ghost_timer <= 0.0:
-		_ghost_timer = 0.025
-		_spawn_ghost()
+		_ghost_timer = 0.022
+		_spawn_ghost(0.55)
 	if _jump_buffer > 0.0:
 		if is_on_floor():
 			_end_dash(T)
@@ -183,8 +211,7 @@ func _dash(delta: float, T: Dictionary) -> void:
 		var w := touching_wall()
 		if w != 0:
 			_end_dash(T)
-			_wall_dir = w
-			_wall_jump(T)
+			_wall_jump(T, w)
 			return
 	if input.slide_pressed and is_on_floor():
 		_end_dash(T)
@@ -201,6 +228,10 @@ func _slide(delta: float, T: Dictionary) -> void:
 	if blocked and absf(velocity.x) < T.slide_min_speed:
 		velocity.x = facing * T.slide_min_speed
 	_gravity(delta, T.max_fall, T)
+	_skid_dust -= delta
+	if _skid_dust <= 0.0:
+		_skid_dust = 0.06
+		Fx.dust(fx_parent, global_position + Vector2(-facing * 4, 0), float(-facing), 2)
 	if blocked:
 		return
 	if _jump_buffer > 0.0:
@@ -235,6 +266,23 @@ func _after_move(vy_before: float, T: Dictionary) -> void:
 		last_floor_x = global_position.x
 
 
+## 墙顶自动翻上：贴墙往上冲、头已经高过墙沿时，把机体推上去
+func _ledge_assist() -> void:
+	if state != State.AIR and state != State.WALL:
+		return
+	var dir := _dir_x()
+	if dir == 0 or velocity.y > 80.0 or not test_move(global_transform, Vector2(dir * 2, 0)):
+		return
+	for up in [2, 4, 6, 8, 10, 12, 14]:
+		if test_move(global_transform, Vector2(0, -up)):
+			return
+		if not test_move(global_transform.translated(Vector2(0, -up)), Vector2(dir * 3, 0)):
+			global_position += Vector2(dir * 2, -up)
+			velocity.y = minf(velocity.y, -60.0)
+			velocity.x = dir * maxf(absf(velocity.x), 120.0)
+			return
+
+
 # ---------------------------------------------------------------- 动作
 
 func _jump(T: Dictionary) -> void:
@@ -243,19 +291,32 @@ func _jump(T: Dictionary) -> void:
 	velocity.y = -T.jump_velocity
 	_jump_buffer = 0.0
 	_coyote = 0.0
+	_squash = Vector2(0.8, 1.22)
 	_set_state(State.AIR)
-	Fx.dust(fx_parent, global_position, 0.0, 5)
+	Fx.dust(fx_parent, global_position, 0.0, 6)
+	Audio.play("jump", -10.0)
 
 
-func _wall_jump(T: Dictionary) -> void:
-	velocity = Vector2(-_wall_dir * T.wall_jump_x, -T.wall_jump_y)
-	facing = -_wall_dir
-	_wall_lock = T.wall_jump_lock
+## 按住朝墙的方向按跳：轻推离墙、向上力度大，会回到同一面墙，单面墙也能一路爬上去；
+## 不按方向或按离墙方向：大力蹬开墙面。
+func _wall_jump(T: Dictionary, wall: int) -> void:
+	if _dir_x() == wall:
+		velocity = Vector2(-wall * T.wall_climb_x, -T.wall_climb_y)
+		_wall_lock = 0.05
+		facing = wall
+	else:
+		velocity = Vector2(-wall * T.wall_jump_x, -T.wall_jump_y)
+		_wall_lock = T.wall_jump_lock
+		facing = -wall
 	_cut_immune = 0.12
 	_jump_buffer = 0.0
 	_coyote = 0.0
+	_wall_coyote = 0.0
+	_air_hang_used = false
+	_squash = Vector2(0.82, 1.2)
 	_set_state(State.AIR)
-	Fx.dust(fx_parent, global_position + Vector2(_wall_dir * 6, -12), float(-_wall_dir), 4)
+	Fx.dust(fx_parent, global_position + Vector2(wall * 6, -12), float(-wall), 5)
+	Audio.play("walljump", -8.0)
 
 
 func _start_dash(T: Dictionary) -> void:
@@ -279,7 +340,11 @@ func _start_dash(T: Dictionary) -> void:
 		facing = int(signf(d.x))
 	if _rect.size == LOW:
 		_set_low(false)
+	_squash = Vector2(1.25, 0.82)
 	_set_state(State.DASH)
+	Fx.dust(fx_parent, global_position, -d.x, 6)
+	Audio.play("dash", -6.0)
+	impact.emit(1.0)
 
 
 func _end_dash(T: Dictionary) -> void:
@@ -298,9 +363,12 @@ func _start_slide(T: Dictionary) -> void:
 	velocity.x = dir * maxf(absf(velocity.x), T.slide_speed)
 	facing = dir
 	_slide_time = 0.0
+	_skid_dust = 0.0
+	_squash = Vector2(1.15, 0.88)
 	_set_low(true)
 	_set_state(State.SLIDE)
-	Fx.dust(fx_parent, global_position, float(-dir), 6)
+	Fx.dust(fx_parent, global_position, float(-dir), 8)
+	Audio.play("slide", -8.0)
 
 
 func _end_slide() -> void:
@@ -309,12 +377,17 @@ func _end_slide() -> void:
 
 func _land(vy: float, T: Dictionary) -> void:
 	_air_dashes = int(T.air_dashes)
-	var impact := clampf(vy / T.max_fall, 0.0, 1.0)
-	_land_squash = impact
+	_air_hang_used = false
+	var hit := clampf(vy / T.max_fall, 0.0, 1.0)
+	_land_squash = hit
+	_squash = Vector2(1.0 + 0.3 * hit, 1.0 - 0.28 * hit)
 	_set_state(State.GROUND)
-	if impact > 0.3:
-		Fx.dust(fx_parent, global_position, 0.0, 4 + int(impact * 6))
-	landed.emit(impact)
+	if hit > 0.25:
+		Fx.dust(fx_parent, global_position, 0.0, 4 + int(hit * 8))
+		Audio.play("land", lerpf(-16.0, -4.0, hit))
+	if hit > 0.85:
+		impact.emit(1.5)
+	landed.emit(hit)
 	if input.slide_held and absf(velocity.x) > 150.0:
 		_start_slide(T)
 
@@ -325,67 +398,113 @@ func _update_slash(delta: float, T: Dictionary) -> void:
 	_combo_window = maxf(_combo_window - delta, 0.0)
 	if input.slash_pressed:
 		if slash_step < 0:
-			_start_slash(_next_step if _combo_window > 0.0 else 0)
+			_start_slash(_next_step if _combo_window > 0.0 else 0, T)
 		else:
 			_slash_queued = true
 	if slash_step < 0:
 		return
 	_slash_time += delta
 	var dur := slash_duration()
-	if not _slash_hit_done and _slash_time >= dur * 0.35:
+	if not _slash_hit_done and _slash_time >= dur * 0.3:
 		_do_hit(T)
 	if _slash_time >= dur:
 		var step := slash_step
 		slash_step = -1
 		if _slash_queued and step < 2:
-			_start_slash(step + 1)
+			_start_slash(step + 1, T)
 		else:
 			_next_step = (step + 1) % 3
-			_combo_window = 0.0 if step >= 2 else 0.25
+			_combo_window = 0.0 if step >= 2 else 0.3
 
 
 func slash_duration() -> float:
-	return Tuning.v.slash_duration * (1.4 if slash_step == 2 else 1.0)
+	return Tuning.v.slash_duration * (1.35 if slash_step == 2 else 1.0)
 
 
-func _start_slash(step: int) -> void:
+func _start_slash(step: int, T: Dictionary) -> void:
 	slash_step = step
 	_slash_time = 0.0
 	_slash_queued = false
 	_slash_hit_done = false
 	_slash_dash = state == State.DASH
-	_slash_aim = aim
+	_slash_aim = _assist_aim(aim)
+	var heavy := step == 2 or _slash_dash
+	trail.heavy = heavy
+	Audio.play("swing_heavy" if heavy else "swing", -5.0)
+	# 出刀前冲：地面朝出刀方向踏一步；空中第一刀稍微滞空
+	var lunge: float = T.slash_lunge * (1.5 if step == 2 else 1.0)
+	var sx := signf(_slash_aim.x) if absf(_slash_aim.x) > 0.2 else float(facing)
+	if state == State.GROUND:
+		if signf(velocity.x) == sx:
+			velocity.x = sx * maxf(absf(velocity.x), lunge)
+		else:
+			velocity.x = sx * lunge
+	elif state == State.AIR:
+		velocity.x += sx * lunge * 0.4
+		if not _air_hang_used:
+			_air_hang_used = true
+			velocity.y = minf(velocity.y, 10.0)
+
+
+## 挥刀吸附：瞄准方向左右 45° 内、够得着的敌人里最近的那个
+func _assist_aim(a: Vector2) -> Vector2:
+	var origin := global_position + CHEST
+	var best := a
+	var best_d := INF
+	for n in get_tree().get_nodes_in_group("hittable"):
+		if n.has_method("alive") and not n.alive():
+			continue
+		var to: Vector2 = n.hurt_rect().get_center() - origin
+		var d := to.length()
+		if d > ASSIST_RANGE or absf(a.angle_to(to)) > deg_to_rad(ASSIST_ANGLE):
+			continue
+		if d < best_d:
+			best_d = d
+			best = to.normalized()
+	return best
 
 
 func _do_hit(T: Dictionary) -> void:
 	_slash_hit_done = true
 	var heavy := slash_step == 2 or _slash_dash
-	var reach := 18.0 + (6.0 if slash_step == 2 else 0.0) + (8.0 if _slash_dash else 0.0)
+	var reach := 20.0 + (6.0 if slash_step == 2 else 0.0) + (8.0 if _slash_dash else 0.0)
 	var origin := global_position + CHEST
-	var center := origin + _slash_aim * 12.0
+	var center := origin + _slash_aim * 14.0
 	var hit_any := false
 	for n in get_tree().get_nodes_in_group("hittable"):
+		if n.has_method("alive") and not n.alive():
+			continue
 		var r: Rect2 = n.hurt_rect()
 		var closest := Vector2(clampf(center.x, r.position.x, r.end.x), clampf(center.y, r.position.y, r.end.y))
 		if closest.distance_to(center) <= reach:
 			n.take_hit(_slash_aim, 2 if heavy else 1)
+			Fx.sparks(fx_parent, closest, _slash_aim, 14 if heavy else 9)
 			slash_hit.emit(n)
 			hit_any = true
 	var s: Dictionary = Poses.SLASH[slash_step]
 	var base := rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle())
-	SlashFx.spawn(fx_parent, origin, base + s.from, base + s.to, facing, 12.0 + reach, heavy)
-	if hit_any and T.hit_stop > 0.0:
-		Engine.time_scale = 0.05
-		get_tree().create_timer(T.hit_stop, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
+	SlashFx.spawn(fx_parent, origin, base + s.from, base + s.to, facing, 14.0 + reach, heavy)
+	if hit_any:
+		Audio.play("hit_heavy" if heavy else "hit", -2.0)
+		impact.emit(6.0 if heavy else 3.5)
+		var stop: float = T.hit_stop * (1.7 if heavy else 1.0)
+		if stop > 0.0:
+			Engine.time_scale = 0.03
+			get_tree().create_timer(stop, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
 
 
 # ---------------------------------------------------------------- 表现
+
+func _skidding() -> bool:
+	var d := _dir_x()
+	return state == State.GROUND and d != 0 and signf(velocity.x) != d and absf(velocity.x) > 110.0
+
 
 func _update_facing() -> void:
 	if state == State.WALL:
 		facing = -_wall_dir
 		return
-	if state == State.DASH or state == State.SLIDE or _wall_lock > 0.0:
+	if state == State.DASH or state == State.SLIDE or _wall_lock > 0.0 or _skidding():
 		return
 	var d := _dir_x()
 	if d != 0:
@@ -395,26 +514,42 @@ func _update_facing() -> void:
 
 
 func _animate(delta: float, T: Dictionary) -> void:
-	rig.scale.x = facing
+	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
+	rig.scale = Vector2(facing * _squash.x, _squash.y)
+	# 加速时前倾、减速时后仰
+	var accel := (velocity.x - _prev_vx) / maxf(delta, 0.0001)
+	_lean = lerpf(_lean, clampf(accel * facing * 0.008, -12.0, 14.0), 1.0 - exp(-12.0 * delta))
 	var target: Dictionary
 	var rate := 22.0
 	match state:
 		State.GROUND:
 			var ratio: float = absf(velocity.x) / T.run_speed
-			if ratio > 0.05:
+			if _skidding():
+				target = Poses.SKID
+				rate = 30.0
+				_skid_dust -= delta
+				if _skid_dust <= 0.0:
+					_skid_dust = 0.05
+					Fx.dust(fx_parent, global_position + Vector2(facing * 6, 0), float(facing), 2)
+			elif ratio > 0.05:
+				var before := _run_phase
 				_run_phase = fmod(_run_phase + absf(velocity.x) * delta / Poses.STRIDE, 1.0)
+				if (before < 0.5 and _run_phase >= 0.5) or _run_phase < before:
+					_footstep(ratio)
 				target = Poses.blend(Poses.IDLE, Poses.run(_run_phase, clampf(ratio, 0.0, 1.2)), clampf(ratio * 3.0, 0.0, 1.0))
+				target.torso += _lean
 				rate = 40.0
 			else:
 				target = Poses.idle(_idle_time)
+				target.torso += _lean * 0.5
 		State.AIR:
 			target = Poses.blend(Poses.JUMP, Poses.FALL, clampf(velocity.y / 400.0 * 0.5 + 0.5, 0.0, 1.0))
 		State.DASH:
 			target = Poses.DASH
-			rate = 40.0
+			rate = 45.0
 		State.SLIDE:
 			target = Poses.SLIDE
-			rate = 40.0
+			rate = 45.0
 		State.WALL:
 			target = Poses.WALL
 	if _land_squash > 0.0:
@@ -428,17 +563,31 @@ func _animate(delta: float, T: Dictionary) -> void:
 		var e := 1.0 - pow(1.0 - t, 3.0)
 		var base := rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle())
 		rig.swing_blade(base + lerpf(s.from, s.to, e))
+		var pts := rig.blade_points()
+		trail.add(pts[0], pts[1])
 	else:
 		rig.release_blade()
 	rig.set_glow(1.0 if state == State.DASH else 0.0)
+	# 超过疾跑速度时留下淡淡的残影
+	if state != State.DASH and absf(velocity.x) > T.run_speed * 1.15:
+		_ghost_timer -= delta
+		if _ghost_timer <= 0.0:
+			_ghost_timer = 0.045
+			_spawn_ghost(0.25)
 
 
-func _spawn_ghost() -> void:
+func _footstep(ratio: float) -> void:
+	Audio.play("step", -18.0 + ratio * 4.0)
+	if ratio > 0.8:
+		Fx.dust(fx_parent, global_position + Vector2(-facing * 3, 0), float(-facing), 1)
+
+
+func _spawn_ghost(alpha: float) -> void:
 	var g := rig.duplicate() as Node2D
 	fx_parent.add_child(g)
 	g.global_position = rig.global_position
 	g.scale = rig.scale
-	g.modulate = Color(0.3, 0.95, 1.0, 0.55)
+	g.modulate = Color(0.3, 0.95, 1.0, alpha)
 	g.z_index = -1
 	var tw := g.create_tween()
 	tw.tween_property(g, "modulate:a", 0.0, 0.22)

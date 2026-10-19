@@ -137,31 +137,34 @@ func _gap() -> void:
 	_check(log[-1].pos.y < 5.0 and log[-1].pos.x > 1810.0, "跳+空中冲刺越过深沟（落点 %s）" % str(log[-1].pos.round()))
 
 
-## 双墙竖井：蹬墙爬到顶上平台
+## 竖井：只靠一面墙（右墙），按住朝墙方向连按跳，一路爬上顶上平台
 func _shaft() -> void:
-	var steps := [{"frames": 14, "move": R, "press": ["jump"], "hold": ["jump"]}]
-	for i in 6:
-		var toward := L if i % 2 == 0 else R
-		var wall := -1 if i % 2 == 0 else 1
-		steps.append({"frames": 1, "move": toward, "press": ["jump"], "hold": ["jump"]})
-		steps.append({"until": func(p): return p.touching_wall() == wall or p.global_position.y < -262.0, "max": 90, "move": toward, "hold": ["jump"]})
-	steps.append({"until": func(p): return p.is_on_floor() and p.global_position.y < -250.0, "max": 240, "move": R, "hold": ["jump"]})
+	var steps := []
+	for i in 8:
+		steps.append({"frames": 1, "move": R, "press": ["jump"], "hold": ["jump"]})
+		steps.append({"frames": 26, "move": R, "hold": ["jump"]})
+	steps.append({"until": func(p): return p.is_on_floor() and p.global_position.y < -250.0, "max": 240, "move": R})
 	var log := await _drive(Vector2(2055, 0), steps)
 	var top: Dictionary = log[-1]
-	_check(top.pos.y <= -255.0 and top.floor, "蹬墙爬上竖井顶（%s，%d 帧）" % [str(top.pos.round()), log.size()])
-	var walls := log.filter(func(e): return e.state == WALL).size()
-	print("shaft: 用 %d 帧爬上，贴墙帧 %d" % [log.size(), walls])
+	_check(top.pos.y <= -255.0 and top.floor, "单面墙按住朝墙连按跳爬上竖井顶（%s，%d 帧）" % [str(top.pos.round()), log.size()])
+	var lowest_x := INF
+	for e in log:
+		lowest_x = minf(lowest_x, e.pos.x)
+	print("shaft: 离墙最远 x=%.0f（墙面 x=2064）" % lowest_x)
 	# 贴墙下滑：空中按住朝墙的方向
 	log = await _drive(Vector2(2058, -200), [{"frames": 50, "move": R}])
 	var sliding := log.filter(func(e): return e.state == WALL)
 	_check(sliding.size() > 20 and sliding[-1].vel.y <= T.wall_slide_speed + 1.0, "贴墙下滑限速（%d 帧，%.0f）" % [sliding.size(), sliding[-1].vel.y if sliding.size() > 0 else -1.0])
+	# 不按方向按跳：大力蹬开墙面
+	log = await _drive(Vector2(2058, -200), [{"frames": 20, "move": R}, {"frames": 1, "press": ["jump"], "hold": ["jump"]}, {"frames": 30, "hold": ["jump"]}])
+	_check(log[-1].pos.x < 2025.0, "不按方向蹬墙会被大力弹开（x=%.0f）" % log[-1].pos.x)
 
 
-## 靶桩：挥刀命中、三段连击
+## 训练机：挥刀命中、三段连击、打碎后重生
 func _slash() -> void:
 	var d = main.range_.dummies[0]
 	var before: int = d.hits
-	var log := await _drive(Vector2(2228, -260), [
+	var log := await _drive(Vector2(352, 0), [
 		{"frames": 2, "move": Vector2.ZERO, "aim": R},
 		{"frames": 1, "press": ["slash"]},
 		{"until": func(p): return p.slash_step == 0 and p._slash_time > 0.06, "max": 120},
@@ -171,12 +174,27 @@ func _slash() -> void:
 		{"until": func(p): return p.slash_step == 2, "max": 120},
 		{"frames": 60},
 	])
-	_check(d.hits - before >= 3, "三刀都命中靶桩（命中 %d）" % (d.hits - before))
+	_check(d.hits - before >= 3, "三刀都命中训练机（命中 %d）" % (d.hits - before))
 	var steps_seen := {}
 	for e in log:
 		if e.slash >= 0:
 			steps_seen[e.slash] = true
 	_check(steps_seen.size() == 3, "三段连击都出现（%s）" % str(steps_seen.keys()))
+	# 吸附：鼠标朝斜上 35°，训练机在正前方，也能打中
+	var h0: int = d.hits
+	await _drive(Vector2(352, 0), [{"frames": 30, "aim": Vector2(0.82, -0.57)}, {"frames": 1, "press": ["slash"]}, {"frames": 40}])
+	_check(d.hits > h0 or not d.alive(), "挥刀吸附到瞄准方向 45° 内的敌人")
+	# 打碎：一直砍到碎
+	var spam := []
+	for i in 12:
+		spam.append({"frames": 1, "press": ["slash"], "aim": R})
+		spam.append({"frames": 14, "aim": R})
+	await _drive(Vector2(352, 0), spam)
+	var broke: bool = not d.alive() or d.hp == d.MAX_HP
+	_check(broke, "打满 HP 训练机会碎掉（hp=%d）" % d.hp)
+	for i in 200:
+		await physics_frame
+	_check(d.alive(), "碎掉后会重生")
 	Engine.time_scale = 1.0
 
 

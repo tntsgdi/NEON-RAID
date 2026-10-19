@@ -29,7 +29,8 @@ const SECTIONS := [
 ]
 
 const CHECKPOINTS := [Vector2(60, 0), Vector2(720, 0), Vector2(1150, 0), Vector2(1545, 0), Vector2(1880, 0), Vector2(2150, -260)]
-const DUMMIES := [Vector2(2250, -260), Vector2(2400, -260), Vector2(2760, 0)]
+## 起点旁边就有两台训练机（之前都在竖井上面，上不去就打不到）
+const DUMMIES := [Vector2(380, 0), Vector2(450, 0), Vector2(2250, -260), Vector2(2400, -260), Vector2(2760, 0)]
 const START := Vector2(60, 0)
 const FINISH_X := 2950.0
 const PIT_Y := 220.0
@@ -55,6 +56,7 @@ func _ready() -> void:
 	for p in DUMMIES:
 		var d := TargetDummy.new()
 		d.position = p
+		d.fx_parent = self
 		add_child(d)
 		dummies.append(d)
 
