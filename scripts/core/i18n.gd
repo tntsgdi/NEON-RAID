@@ -107,6 +107,11 @@ Dev: F1 tuning · F3 pixel/HD"],
 	"ARENA_WAVE": ["战斗训练场 · 第 %d/%d 波", "COMBAT ARENA · WAVE %d/%d"],
 	"ARENA_CLEAR": ["训练完成", "ARENA CLEAR"],
 	"HUD_OVERCLOCK": ["神经超频", "OVERCLOCK"],
+	"HUD_PROJECT": ["意识投射中 · 对准机体按 E", "PROJECTING · AIM AND PRESS E"],
+	"SHELL_STRIDER": ["R-0 行者 · 基础机体", "R-0 STRIDER · BASE"],
+	"SHELL_BOT": ["SB-7 安保机 · 夺取", "SB-7 SECURITY · SEIZED"],
+	"SHELL_DRONE": ["DR-2 侦察机 · 夺取", "DR-2 SCOUT · SEIZED"],
+	"SHELL_WISP": ["意识体 · 无壳", "CONSCIOUSNESS · NO SHELL"],
 	"TUNE_camera_look_ahead": ["镜头前瞻", "Camera look-ahead"],
 }
 

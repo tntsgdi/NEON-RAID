@@ -46,7 +46,31 @@ func _ready() -> void:
 		slider.focus_mode = Control.FOCUS_NONE
 		slider.value_changed.connect(func(value): Settings.set_value(key, value))
 		grid.add_child(slider)
+	resized.connect(func(): pivot_offset = size * 0.5)
 	var hint := Label.new()
 	hint.text = "SET_HINT"
 	hint.add_theme_font_size_override("font_size", 7)
 	col.add_child(hint)
+
+
+var is_open := false
+var _tw: Tween
+
+
+## 打开：从一条横线纵向展开（0.16 秒）；关闭：收回成横线再隐藏
+func toggle() -> void:
+	is_open = not is_open
+	if _tw:
+		_tw.kill()
+	pivot_offset = size * 0.5
+	_tw = create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	if is_open:
+		visible = true
+		scale = Vector2(1.08, 0.04)
+		modulate.a = 0.0
+		_tw.tween_property(self, "scale", Vector2.ONE, 0.16)
+		_tw.parallel().tween_property(self, "modulate:a", 1.0, 0.1)
+	else:
+		_tw.tween_property(self, "scale", Vector2(1.08, 0.04), 0.12).set_ease(Tween.EASE_IN)
+		_tw.parallel().tween_property(self, "modulate:a", 0.0, 0.12)
+		_tw.tween_callback(func(): visible = false)

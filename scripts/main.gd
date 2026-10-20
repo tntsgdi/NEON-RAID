@@ -381,8 +381,8 @@ func _on_training_clear() -> void:
 
 func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("settings"):
-		settings_panel.visible = not settings_panel.visible
-		get_tree().paused = settings_panel.visible
+		settings_panel.toggle()
+		get_tree().paused = settings_panel.is_open
 		TimeFx.reset()
 	if get_tree().paused:
 		return
@@ -452,13 +452,18 @@ func _process(delta: float) -> void:
 	_tint.color.a = lerpf(_tint.color.a, 0.14 if slow else 0.0, 1.0 - exp(-20.0 * delta / maxf(Engine.time_scale, 0.05)))
 	hud.refresh(level.label(x), run_time, best, bvel.length(), finished,
 		"HUD_MODE_PIXEL" if pixel_mode else "HUD_MODE_HD", tuning_panel.visible)
+	hud.possess_k = 0.0 if body is Wisp else controller.cooldown / Consciousness.COOLDOWN
 	if body == player:
+		hud.set_shell(tr("SHELL_STRIDER"))
 		hud.refresh_combat(player.hp, Player.MAX_HP, player.energy, Tuning.v.gun_energy, player.overclock_charge > 0.0)
 	elif body is EnemyBot:
+		hud.set_shell(tr("SHELL_BOT"))
 		hud.refresh_combat(body.hp, EnemyBot.MAX_HP, 0.0, 0.0, false)
 	elif body is DroneBot:
+		hud.set_shell(tr("SHELL_DRONE"))
 		hud.refresh_combat(body.hp, DroneBot.MAX_HP, 0.0, 0.0, false)
 	else:
+		hud.set_shell(tr("SHELL_WISP"))
 		hud.refresh_combat(0, 0, 0.0, 0.0, false)
 
 

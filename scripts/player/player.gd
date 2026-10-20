@@ -23,6 +23,10 @@ const CHEST := Vector2(0, -26)
 const STAND := Vector2(12, 36)
 const LOW := Vector2(12, 16)
 const MAX_HP := 3
+## 刀索敌：锁定目标在这个距离内，每一刀都瞬步突进到出刀距离
+const MELEE_LOCK_RANGE := 120.0
+const MELEE_STOP := 22.0
+const MELEE_LUNGE_TIME := 0.06
 
 var input: PlayerInput = DeviceInput.new()
 ## 被意识控制中；false 时是被留在原地、单膝跪着待机的空机体（可以再夺回来）
@@ -80,6 +84,9 @@ var _streak_timer := 0.0
 var _wall_up := true
 ## 在地面上往高墙推了多久（推够 0.08 秒才上墙，避免战斗中误吸）
 var _push_wall := 0.0
+## 刀索敌突进：剩余时间和速度
+var _lunge_t := 0.0
+var _lunge_vel := Vector2.ZERO
 
 # 挥刀层
 var slash_step := -1
@@ -127,6 +134,7 @@ func reset_at(pos: Vector2) -> void:
 	_set_low(false)
 	slash_step = -1
 	_slash_queued = false
+	_lunge_t = 0.0
 	_slash_lock = 0.0
 	_slash_freeze = 0.0
 	_combo_window = 0.0
@@ -177,6 +185,16 @@ func _physics_process(delta: float) -> void:
 		State.WALL:
 			_wall(delta, T)
 
+	# 刀索敌突进：0.06 秒内瞬步到出刀距离，期间不受重力，留下残影
+	if _lunge_t > 0.0:
+		_lunge_t -= delta
+		velocity = _lunge_vel
+		_ghost_timer -= delta
+		if _ghost_timer <= 0.0:
+			_ghost_timer = 0.015
+			_spawn_ghost(0.35)
+		if _lunge_t <= 0.0:
+			velocity = _lunge_vel.normalized() * 120.0
 	var vy_before := velocity.y
 	var vx_before := velocity.x
 	var y_before := global_position.y
@@ -188,6 +206,7 @@ func _physics_process(delta: float) -> void:
 		_step_up(vx_before)
 		var drop := global_position.y - y_before
 		if is_on_floor() and absf(drop) > 3.0:
+			# 髋、脚、线缆一起留在原来的世界位置，再平滑追上新地面（腿形不变，不会一帧跳过去）
 			rig.ground_shift(drop)
 	_ledge_assist()
 	_after_move(vy_before, T)
@@ -285,7 +304,8 @@ func _mantle() -> bool:
 			global_position += Vector2(_last_wall * 8, -up)
 			velocity = Vector2(_last_wall * 150.0, -80.0)
 			_set_state(State.AIR)
-			rig.ground_shift(-up)
+			# 骨架整体先留在原处（含水平方向），再平滑追上，翻墙顶不会一帧跳过去
+			rig.position -= Vector2(_last_wall * 8, -up)
 			return true
 	return false
 
@@ -375,8 +395,7 @@ func _step_up(vx_before: float) -> void:
 		if not test_move(global_transform.translated(Vector2(0, -up)), Vector2(dir * 3, 0)):
 			global_position += Vector2(dir * 3, -up)
 			velocity.x = vx_before
-			rig.ground_shift(-up)
-			return
+			return  # 髋和脚的平滑过渡由移动后的落差检测统一处理（只补一次）
 	# 迈不上去的高墙：持续往墙上推 0.08 秒就走上墙面，水平速度转成向上的速度
 	_push_wall += get_physics_process_delta_time()
 	if _push_wall >= 0.08 and not test_move(global_transform, Vector2(0, -4)):
@@ -401,6 +420,7 @@ func _ledge_assist() -> void:
 			return
 		if not test_move(global_transform.translated(Vector2(0, -up)), Vector2(dir * 3, 0)):
 			global_position += Vector2(dir * 2, -up)
+			rig.position -= Vector2(dir * 2, -up)  # 骨架留在原处再追上，翻沿不瞬移
 			velocity.y = minf(velocity.y, -60.0)
 			velocity.x = dir * maxf(absf(velocity.x), 120.0)
 			return
@@ -614,14 +634,30 @@ func _start_slash(step: int, T: Dictionary) -> void:
 	_slash_queued = false
 	_slash_hit_done = false
 	_slash_dash = state == State.DASH
-	if _dir_x() == 0 and is_instance_valid(lock_target) and absf(lock_target.global_position.x - global_position.x) < 70.0:
-		var tx := signf(lock_target.global_position.x - global_position.x)
-		if tx != 0.0:
-			facing = int(tx)
-	_slash_aim = _slash_dir()
 	var heavy := step == 2 or _slash_dash
 	trail.heavy = heavy
 	Audio.play("swing_heavy" if heavy else "swing_%d" % (step + 1), -4.0)
+	# 刀索敌：没有明确按上挑 / 下劈时，锁定目标在 120 像素内就瞬步突进过去、刀朝它挥
+	var explicit := input.move.y < -0.5 or (input.move.y > 0.5 and state != State.GROUND and state != State.SLIDE)
+	var tgt := _melee_target()
+	if tgt != null and not explicit:
+		var to: Vector2 = tgt.hurt_rect().get_center() - (global_position + CHEST)
+		if absf(to.x) > 2.0:
+			facing = int(signf(to.x))
+		_slash_aim = to.normalized()
+		var gap := to.length() - MELEE_STOP
+		if gap > 4.0:
+			_lunge_vel = to.normalized() * gap / MELEE_LUNGE_TIME
+			if state == State.GROUND and _lunge_vel.y > 0.0:
+				_lunge_vel.y = 0.0  # 地面上不往地下钻
+			_lunge_t = MELEE_LUNGE_TIME
+			if state == State.WALL or state == State.SLIDE:
+				if _rect.size == LOW:
+					_set_low(false)
+				_set_state(State.AIR)
+			Audio.play("dash", -10.0, 1.3)
+		return
+	_slash_aim = _slash_dir()
 	# 出刀前冲：横斩在地面朝前踏一步；空中第一刀稍微滞空
 	var lunge: float = T.slash_lunge * (1.5 if step == 2 else 1.0)
 	var sx := float(facing)
@@ -637,7 +673,18 @@ func _start_slash(step: int, T: Dictionary) -> void:
 			velocity.y = minf(velocity.y, 10.0)
 
 
-## 挥刀方向：固定朝面朝方向；按住上 = 上挑，空中按住下 = 下劈（不看鼠标）
+## 刀索敌的目标：锁定目标在 120 像素内、还活着、能被砍（不是跪着的空机体）
+func _melee_target() -> Node2D:
+	if not is_instance_valid(lock_target) or not lock_target.is_in_group("hittable"):
+		return null
+	if lock_target.has_method("alive") and not lock_target.alive():
+		return null
+	if lock_target.hurt_rect().get_center().distance_to(global_position + CHEST) > MELEE_LOCK_RANGE:
+		return null
+	return lock_target
+
+
+## 没有锁定目标时的挥刀方向：朝面朝方向；按住上 = 上挑，空中按住下 = 下劈
 func _slash_dir() -> Vector2:
 	if state == State.WALL:
 		return Vector2(-_wall_dir, 0)  # 墙上挥刀：朝背离墙面的方向砍
@@ -859,6 +906,7 @@ func hurt(dir: Vector2, dmg: int) -> void:
 	velocity = Vector2((signf(dir.x) if absf(dir.x) > 0.1 else -facing) * 220.0, -200.0)
 	_set_state(State.AIR)
 	Fx.sparks(fx_parent, global_position + CHEST, dir, 10, Neon.RED_HOT)
+	rig.flinch()
 	Audio.play("hurt", -3.0)
 	Music.duck(8.0, 0.4)
 	impact.emit(5.0, dir)
@@ -898,18 +946,20 @@ func _animate(delta: float, T: Dictionary) -> void:
 	var t: float = rig.turn
 	var on_wall := state == State.WALL
 	var ratio: float = absf(velocity.x) / T.run_speed
+	# 镜像只走"转身"这一条路（压扁再翻过来），不会一帧镜像
+	var rig_facing := facing
 	if on_wall:
-		# 墙面行走：机体转 90°，脚踩在墙上；往上走头朝上，往下走头朝下
+		# 墙面行走：骨架整体旋转 -90°×墙的方向，脚就踩在墙上；往上走 / 往下走只是左右朝向不同
 		if absf(velocity.y) > 5.0:
 			_wall_up = velocity.y < 0.0
-		rig.rotation = lerp_angle(rig.rotation, -PI * 0.5 if _wall_up else PI * 0.5, 1.0 - exp(-20.0 * delta))
-		rig.scale = Vector2(_squash.x, _wall_dir * (1.0 if _wall_up else -1.0) * _squash.y)
+		rig_facing = _wall_dir if _wall_up else -_wall_dir
+		rig.rotation = lerp_angle(rig.rotation, -PI * 0.5 * _wall_dir, 1.0 - exp(-20.0 * delta))
 		rig.position = rig.position.lerp(Vector2(_wall_dir * 6.0, -18.0), 1.0 - exp(-20.0 * delta))
 		ratio = absf(velocity.y) / T.run_speed
 	else:
-		rig.rotation = lerp_angle(rig.rotation, 0.0, 1.0 - exp(-20.0 * delta))
-		rig.position = rig.position.lerp(Vector2.ZERO, 1.0 - exp(-20.0 * delta))
-		rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.3) * _squash.x, _squash.y)
+		rig.rotation = lerp_angle(rig.rotation, 0.0, 1.0 - exp(-14.0 * delta))
+		rig.position = rig.position.lerp(Vector2.ZERO, 1.0 - exp(-16.0 * delta))
+	rig.scale = Vector2((signf(t) if t != 0.0 else float(rig_facing)) * maxf(absf(t), 0.08) * _squash.x, _squash.y)
 	var mode := "idle"
 	if parked and state == State.GROUND:
 		mode = "kneel"
@@ -926,7 +976,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 		rig_slash = inv.basis_xform(_slash_aim).normalized()
 	rig.update({
 		"state": mode,
-		"facing": 1 if on_wall else facing,
+		"facing": rig_facing,
 		"vel": rig_vel,
 		"accel_x": (velocity.x - _prev_vx) / maxf(delta, 0.0001),
 		"speed_ratio": ratio,
@@ -939,6 +989,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 		"aim_local": rig_aim,
 		"sprint": sprinting,
 		"glow": (1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0) - (0.8 if parked else 0.0),
+		"hp_k": float(hp) / MAX_HP,
 	}, delta)
 	_after_animate(delta, T)
 

@@ -28,6 +28,7 @@ func _run() -> void:
 	await physics_frame
 
 	await _gun()
+	await _melee_lock()
 	await _enemy_fire()
 	await _dash_through()
 	await _deflect()
@@ -129,6 +130,16 @@ func _gun() -> void:
 				fired += 1
 	player.input = load("res://scripts/player/player_input.gd").new()
 	_check(fired == 8, "能量 8 格：快速连按 10 次只打出 8 发（实际 %d）" % fired)
+
+
+## 刀索敌：锁定目标在 120 像素内，按 J 瞬步突进过去砍中它
+func _melee_lock() -> void:
+	await _fresh()
+	var e = _bot(Vector2(-230, 0), false, false)
+	var hp0: int = e.hp
+	var log := await _drive(Vector2(-330, 0), [{"frames": 1, "move": R}, {"frames": 8, "aim": R}, {"frames": 1, "press": ["slash"], "aim": R}, {"frames": 30, "aim": R}])
+	var moved: float = log[-1].pos.x - (-330.0)
+	_check(e.hp < hp0 and moved > 60.0, "刀索敌：100 像素外按 J 瞬步过去砍中（前进 %.0f，敌人血 %d→%d）" % [moved, hp0, e.hp])
 
 
 ## 敌人先拉瞄准线再开火，站着不动会掉 1 血

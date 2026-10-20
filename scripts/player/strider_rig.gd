@@ -72,7 +72,11 @@ var _inert_t := 1.0
 var _toe_shift := 0.0
 var _was_slashing := false
 var _last_step := -1
+## 关键关节（机体坐标，丝滑探针用）
+var keys := {}
 var _blade_off := 0.0
+## 受击后仰的剩余时间（目镜同时闪红）
+var _flinch := 0.0
 var _blade_t := 1.0
 
 
@@ -89,10 +93,8 @@ func update(m: Dictionary, delta: float) -> void:
 	if m.facing != _facing:
 		_mirror_cables()
 		_facing = m.facing
-	if m.speed_ratio > 0.4 and m.state == "run":
-		turn = float(m.facing)
-	else:
-		turn = move_toward(turn, float(m.facing), delta / 0.12 * 2.0)
+	# 转身：任何速度都用约 0.1 秒压扁再翻过来，不会一帧镜像过去
+	turn = move_toward(turn, float(m.facing), delta / 0.1 * 2.0)
 	var state: String = m.state
 	var ratio: float = m.speed_ratio
 
@@ -180,7 +182,7 @@ func update(m: Dictionary, delta: float) -> void:
 	_last_step = m.slash_step
 	if slashing:
 		# 出刀：前约 0.06 秒从原来的位置接过去，之后严格按挥刀曲线走（命中判定不受影响）
-		_blade_angle = want + _blade_off * exp(-_blade_t / 0.03)
+		_blade_angle = want + _blade_off * exp(-_blade_t / 0.05)
 	else:
 		_blade_angle = lerp_angle_deg(_blade_angle, want, 1.0 - exp(-14.0 * delta))
 	_blade_t += delta
@@ -206,6 +208,18 @@ func update(m: Dictionary, delta: float) -> void:
 		anchors.append(pelvis + a.rotated(rot))
 	_step_cables(anchors, local_vel, delta)
 
+	# ---- 关键关节：换到机体坐标（含骨架自身的旋转、缩放、平移）
+	var tf := transform
+	keys = {
+		"pelvis": tf * pelvis,
+		"knee_f": tf * legs[0][1], "knee_b": tf * legs[1][1],
+		"toe_f": tf * legs[0][3], "toe_b": tf * legs[1][3],
+		"nose": tf * (pelvis + HULL[2].rotated(rot)),
+		"tail": tf * (pelvis + HULL[5].rotated(rot)),
+		"blade_tip": tf * tip,
+		"muzzle": tf * barrel_end,
+	}
+
 	# ---- 收集要画的图形
 	_shapes.clear()
 	_add_leg(legs[1], FILL_BACK, EDGE_BACK)
@@ -220,9 +234,20 @@ func update(m: Dictionary, delta: float) -> void:
 		visor.append(pelvis + p.rotated(rot))
 	# glow < 0：没有意识的空机体，目镜和核心变暗
 	var g: float = maxf(m.glow, 0.0)
+	_flinch = maxf(_flinch - delta, 0.0)
 	var eye: Color = CYAN.lerp(Color.WHITE, g) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
+	if _flinch > 0.0:
+		eye = eye.lerp(Neon.RED_HOT, _flinch / 0.25)
 	_shapes.append(["poly", visor, eye, CYAN if m.glow >= 0.0 else EDGE_BACK])
-	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 1.8 + g, eye])
+	# 待机：目镜上一道亮光来回扫（机器在"看"）
+	if state == "idle" and m.glow >= 0.0:
+		var u := 0.5 + 0.5 * sin(m.time * 1.7)
+		var a0: Vector2 = VISOR[3].lerp(VISOR[1], u)
+		_shapes.append(["dot", pelvis + a0.rotated(rot), 1.1, Color(2.4, 2.6, 2.6, 0.9)])
+	# 核心灯：血量的颜色（玩家不用看 HUD 也知道自己还剩多少血）
+	var core: Color = core_color(m.get("hp_k", 1.0), m.time) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
+	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 4.0 + g * 2.0, Color(core.r, core.g, core.b, 0.18)])
+	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 1.8 + g, core.lerp(Color.WHITE, g * 0.5)])
 	if state == "kneel":
 		_shapes.append(["ring", pelvis + Vector2(0, -4), 20.0 + 3.0 * sin(m.time * 3.0), Color(0.4, 1.4, 1.7, 0.35 + 0.2 * sin(m.time * 3.0))])
 	_shapes.append(["line", mount, barrel_end, 3.5, Color(0.35, 0.4, 0.48)])
@@ -240,9 +265,11 @@ func update(m: Dictionary, delta: float) -> void:
 			_shapes.append(["line", h, h + d * BLADE_LEN, 3.0, Color(0.4, 1.5, 1.8, 0.07 + 0.05 * i)])
 	_prev_blade = _blade_angle
 	var hot: bool = m.slash_step >= 0 or state == "dash"
+	# 连击越往后刀越亮：第一刀青、第二刀更亮、第三刀接近白热，光晕也更宽
+	var heat := clampf(float(m.slash_step), 0.0, 2.0) / 2.0 if m.slash_step >= 0 else 0.0
 	if hot:
-		_shapes.append(["line", hand, tip, 4.0, Color(0.25, 0.9, 1.0, 0.25)])
-	_shapes.append(["line", hand, tip, 2.0, BLADE if hot else BLADE_REST])
+		_shapes.append(["line", hand, tip, 4.0 + heat * 3.0, Color(0.25, 0.9, 1.0, 0.25 + heat * 0.2)])
+	_shapes.append(["line", hand, tip, 2.0, BLADE.lerp(Color(2.6, 2.8, 2.9), heat) if hot else BLADE_REST])
 	_shapes.append(["dot", shoulder, 2.0, EDGE])
 	queue_redraw()
 
@@ -290,8 +317,14 @@ func _foot_targets(m: Dictionary, pelvis: Vector2) -> Array:
 ## 三节 IK：脚尖 → 踝（跖骨固定长度），髋 → 踝用两节、膝盖朝前。返回 [髋, 膝, 踝, 脚尖]
 func _leg(hip: Vector2, toe: Vector2, meta_tilt: float) -> Array:
 	var ankle := toe + META.rotated(deg_to_rad(meta_tilt))
+	# 踝关节至少在髋部下方 9 像素：脚抬得再高也不会翻到髋部上面（那里 IK 的膝盖方向不确定，会乱跳）
+	if ankle.y < hip.y + 9.0:
+		var lift_fix := hip.y + 9.0 - ankle.y
+		ankle.y += lift_fix
+		toe.y += lift_fix
 	var d := hip.distance_to(ankle)
-	var reach := THIGH + SHIN - 0.5
+	# 腿不完全伸直：接近伸直时 IK 的膝盖位置会剧烈变化（奇异点），留 5% 余量
+	var reach := (THIGH + SHIN) * 0.95
 	if d > reach:
 		var pull := (ankle - hip).normalized() * (d - reach)
 		ankle -= pull
@@ -325,10 +358,11 @@ func _slash_arc(step: int, t: float) -> float:
 	var pull := 18.0 if step == 0 else 0.0
 	if t < wind:
 		return s.from - sgn * pull * (t / wind)
-	var strike_end := wind + 0.4
+	# 劈砍段占 50%，用正弦缓出（起始角速度约为平均的 1.6 倍）：依然快，但每一帧刀都看得清
+	var strike_end := wind + 0.5
 	if t < strike_end:
-		var u := (t - wind) / 0.4
-		var e := 1.0 - pow(1.0 - u, 3.0)
+		var u := (t - wind) / 0.5
+		var e := sin(u * PI * 0.5)
 		return lerpf(s.from - sgn * pull, s.to + sgn * s.over, e)
 	var v := (t - strike_end) / (1.0 - strike_end)
 	return lerpf(s.to + sgn * s.over, s.to, v * v)
@@ -340,9 +374,9 @@ func _slash_twist(step: int, t: float) -> float:
 	var back := -10.0 if step == 0 else 4.0
 	if t < wind:
 		return back * (t / wind)
-	if t < wind + 0.4:
-		return lerpf(back, 16.0, (t - wind) / 0.4)
-	return lerpf(16.0, 0.0, (t - wind - 0.4) / (1.0 - wind - 0.4))
+	if t < wind + 0.5:
+		return lerpf(back, 16.0, sin((t - wind) / 0.5 * PI * 0.5))
+	return lerpf(16.0, 0.0, (t - wind - 0.5) / (1.0 - wind - 0.5))
 
 
 func _step_cables(anchors: Array, local_vel: Vector2, delta: float) -> void:
@@ -387,6 +421,22 @@ func ground_shift(dy: float) -> void:
 
 func kick() -> void:
 	_recoil = 3.0
+
+
+## 受击：机身猛地后仰、髋往下一沉，目镜闪红 0.25 秒（之后弹簧自己弹回来）
+func flinch() -> void:
+	_hull_vel -= 420.0
+	_pelvis_vel += 90.0
+	_flinch = 0.25
+
+
+## 核心灯随血量变色：满血青 → 半血琥珀 → 残血红色脉冲
+static func core_color(hp_k: float, time: float) -> Color:
+	if hp_k > 0.67:
+		return CYAN
+	if hp_k > 0.34:
+		return Color(2.0, 1.15, 0.3)
+	return Color(2.2, 0.25, 0.3) * (0.55 + 0.45 * absf(sin(time * 6.0)))
 
 
 func muzzle() -> Vector2:
