@@ -416,13 +416,13 @@ func _process(delta: float) -> void:
 ## 镜头在物理帧里移动，和机体一起被物理插值，任何刷新率下都平滑
 func _physics_process(delta: float) -> void:
 	var T: Dictionary = Tuning.v
-	_look = lerpf(_look, clampf(player.velocity.x * T.camera_look_ahead, -110.0, 110.0), 1.0 - exp(-3.0 * delta))
+	_look = lerpf(_look, clampf(player.velocity.x * T.camera_look_ahead, -170.0, 170.0), 1.0 - exp(-5.0 * delta))
 	var target := player.global_position + Vector2(_look, -40.0)
 	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-12.0 * delta))
 	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-7.0 * delta))
 	# 越快镜头拉得越远：跑档最多拉远 6%，疾驰档 12%；进入疾驰的一刻先猛缩一下再拉远
 	var speed_k := clampf(absf(player.velocity.x) / T.run_speed - 0.5, 0.0, 1.0)
-	var want_zoom := 1.0 - 0.06 * speed_k - (0.06 if player.sprinting else 0.0) - (0.03 if player.state == Player.State.DASH else 0.0)
+	var want_zoom := 1.0 - 0.04 * speed_k - (0.04 if player.sprinting else 0.0) - (0.02 if player.state == Player.State.DASH else 0.0)
 	_zoom_pulse = move_toward(_zoom_pulse, 0.0, delta * 0.25)
 	camera.zoom = Vector2.ONE * (lerpf(camera.zoom.x - _zoom_pulse * 0.0, want_zoom, 1.0 - exp(-3.0 * delta)) + _zoom_pulse)
 	_kick = _kick.lerp(Vector2.ZERO, 1.0 - exp(-18.0 * delta))

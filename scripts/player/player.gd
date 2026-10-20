@@ -66,6 +66,10 @@ var _air_hang_used := false
 var sprinting := false
 var _sprint_t := 0.0
 var _sprint_drop := 0.0
+## 疾驰持续时间：5 秒内上限从 sprint_speed 慢慢涨到 sprint_max
+var _sprint_held := 0.0
+## 进入冲刺前的水平速度：冲刺结束后至少保留这么快，不会把疾驰砍掉
+var _pre_dash_speed := 0.0
 var _streak_timer := 0.0
 
 # 挥刀层
@@ -377,6 +381,7 @@ func _start_dash(T: Dictionary) -> void:
 	d = d.normalized()
 	if not grounded:
 		_air_dashes -= 1
+	_pre_dash_speed = absf(velocity.x)
 	_dash_dir = d
 	_dash_left = T.dash_time
 	_dash_cd = T.dash_cooldown
@@ -395,7 +400,9 @@ func _start_dash(T: Dictionary) -> void:
 
 func _end_dash(T: Dictionary) -> void:
 	if _dash_dir.x != 0.0:
-		velocity.x = _dash_dir.x * maxf(T.run_speed, T.dash_speed * T.dash_carry)
+		# 冲刺出来至少和冲进去时一样快（疾驰中冲刺不会掉速），并保留冲刺速度的八成
+		var keep := _pre_dash_speed if signf(_dash_dir.x) == signf(velocity.x) or _pre_dash_speed < 1.0 else 0.0
+		velocity.x = signf(_dash_dir.x) * maxf(maxf(keep, T.run_speed), T.dash_speed * 0.8) * absf(_dash_dir.x) / maxf(absf(_dash_dir.x), 0.001)
 	velocity.y = _dash_dir.y * T.dash_speed * 0.4
 	_set_state(State.GROUND if is_on_floor() and _dash_dir.y >= 0.0 else State.AIR)
 
@@ -448,17 +455,21 @@ func _update_sprint(delta: float, T: Dictionary) -> void:
 	var d := _dir_x()
 	var same := d != 0 and signf(velocity.x) == d
 	if sprinting:
+		_sprint_held += delta
 		var lost: bool = not same or absf(velocity.x) < T.run_speed * 0.75 or state == State.WALL or (is_on_wall() and state != State.DASH)
+		# 跳、滑铲、冲刺、挥刀期间有 0.3 秒宽限；平地上 0.12 秒
+		var grace := 0.3 if (state != State.GROUND or slash_step >= 0) else 0.12
 		if not same and d != 0:
 			sprinting = false  # 反方向：立即掉档
 		elif lost:
 			_sprint_drop += delta
-			if _sprint_drop > 0.12:
+			if _sprint_drop > grace:
 				sprinting = false
 		else:
 			_sprint_drop = 0.0
 		if not sprinting:
 			_sprint_t = 0.0
+			_sprint_held = 0.0
 		return
 	if same and absf(velocity.x) >= T.run_speed * 0.92 and state != State.WALL:
 		_sprint_t += delta
@@ -470,6 +481,12 @@ func _update_sprint(delta: float, T: Dictionary) -> void:
 			sprint_started.emit()
 	else:
 		_sprint_t = 0.0
+
+
+## 疾驰档当前的速度上限：持续疾驰 5 秒内从 sprint_speed 涨到 sprint_max
+func sprint_top() -> float:
+	var T: Dictionary = Tuning.v
+	return lerpf(T.sprint_speed, T.sprint_max, clampf(_sprint_held / 5.0, 0.0, 1.0))
 
 
 # ---------------------------------------------------------------- 挥刀层
@@ -624,7 +641,8 @@ func _update_gun(delta: float, T: Dictionary) -> void:
 	Audio.play("shot", -3.0)
 	rig.kick()
 	if state == State.GROUND:
-		velocity.x -= aim.x * 40.0
+		# 后坐力只在站定或慢跑时有，高速时不把速度磨掉
+		velocity.x -= aim.x * 40.0 * clampf(1.0 - absf(velocity.x) / T.run_speed, 0.0, 1.0)
 
 
 func hurt_rect() -> Rect2:
@@ -741,8 +759,8 @@ func _animate(delta: float, T: Dictionary) -> void:
 				mode = "skid"
 				_skid_dust -= delta
 				if _skid_dust <= 0.0:
-					_skid_dust = 0.05
-					Fx.dust(fx_parent, global_position + Vector2(facing * 10, 0), float(facing), 2)
+					_skid_dust = 0.04
+					Fx.dust(fx_parent, global_position + Vector2(facing * 10, 0), float(facing), 2 + int(absf(velocity.x) / 120.0))
 			elif ratio > 0.05:
 				mode = "run"
 				var before := _run_phase
@@ -789,8 +807,8 @@ func _animate(delta: float, T: Dictionary) -> void:
 	if state != State.DASH and absf(velocity.x) > T.run_speed * 1.15:
 		_ghost_timer -= delta
 		if _ghost_timer <= 0.0:
-			_ghost_timer = 0.045
-			_spawn_ghost(0.25)
+			_ghost_timer = 0.07
+			_spawn_ghost(0.14)
 
 
 func _footstep(ratio: float) -> void:
@@ -808,7 +826,7 @@ func _run_x(delta: float, accel: float, decel: float, turn: float, T: Dictionary
 	if _wall_lock > 0.0:
 		return
 	var dir := _dir_x()
-	var top: float = T.sprint_speed if sprinting else T.run_speed
+	var top: float = sprint_top() if sprinting else T.run_speed
 	var vx := velocity.x
 	if dir == 0:
 		vx = move_toward(vx, 0.0, decel * delta)

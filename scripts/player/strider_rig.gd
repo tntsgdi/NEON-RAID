@@ -60,13 +60,17 @@ var _muzzle := Vector2.ZERO
 var turn := 1.0
 var _prev_blade := 150.0
 ## 惯性化过渡：切换动作时，旧姿势和新姿势的差在约 0.1 秒内衰减到零（输入立即生效，画面不跳）
-const INERTIA_TAU := 0.035
+const INERTIA_TAU := 0.07
 var _last_mode := ""
 var _last_toes := [Vector2.ZERO, Vector2.ZERO]
 var _last_tilts := [0.0, 0.0]
 var _toe_off := [Vector2.ZERO, Vector2.ZERO]
 var _tilt_off := [0.0, 0.0]
 var _inert_t := 1.0
+## 刀臂也做惯性化：出刀、收刀那一刻不会一帧跳过去
+var _was_slashing := false
+var _blade_off := 0.0
+var _blade_t := 1.0
 
 
 func _ready() -> void:
@@ -156,11 +160,19 @@ func update(m: Dictionary, delta: float) -> void:
 	elif state == "dash":
 		rest = 175.0
 	var want := rest
-	if m.slash_step >= 0:
+	var slashing: bool = m.slash_step >= 0
+	if slashing:
 		want = m.slash_dir + _slash_arc(m.slash_step, m.slash_t)
-		_blade_angle = want
+	if slashing != _was_slashing:
+		_blade_off = rad_to_deg(angle_difference(deg_to_rad(want), deg_to_rad(_blade_angle)))
+		_blade_t = 0.0
+		_was_slashing = slashing
+	if slashing:
+		# 出刀：前约 0.06 秒从原来的位置接过去，之后严格按挥刀曲线走（命中判定不受影响）
+		_blade_angle = want + _blade_off * exp(-_blade_t / 0.03)
 	else:
 		_blade_angle = lerp_angle_deg(_blade_angle, want, 1.0 - exp(-14.0 * delta))
+	_blade_t += delta
 	var bdir := Vector2.from_angle(deg_to_rad(_blade_angle))
 	var hand := shoulder + bdir * ARM_LEN
 	var tip := hand + bdir * BLADE_LEN

@@ -117,6 +117,13 @@ func _sprint() -> void:
 	_check(player.sprinting and top >= T.sprint_speed * 0.95, "持续跑 1.25 秒进入疾驰档（最高 %.0f）" % top)
 	await _drive(player.global_position, [{"frames": 2, "move": L}])
 	_check(not player.sprinting, "反方向立即掉出疾驰档")
+	# 疾驰中冲刺：出来不掉速，疾驰档保持
+	log = await _drive(Vector2(60, 0), [{"frames": 150, "move": R}, {"frames": 1, "move": R, "press": ["dash"]}, {"frames": 40, "move": R}])
+	var before_dash: float = absf(log[149].vel.x)
+	var after_min := INF
+	for i in range(175, log.size() - 1):
+		after_min = minf(after_min, absf(log[i].vel.x))
+	_check(after_min >= before_dash - 5.0 and player.sprinting, "疾驰中冲刺出来不掉速（冲刺前 %.0f，之后最低 %.0f）" % [before_dash, after_min])
 
 
 ## 动作衔接：一串跑→滑铲→跳→冲刺→挥刀→落地→急停转身里，脚尖每帧的位移不应突然跳变
@@ -136,6 +143,11 @@ func _smooth() -> void:
 	player.input = inp
 	var prev := []
 	var worst := 0.0
+	var hull_worst := 0.0
+	var prev_hull: float = player.rig.hull_angle
+	var blade_jump := 0.0
+	var prev_slash: int = player.slash_step
+	var prev_blade: float = player.rig._blade_angle
 	while not inp.done:
 		await physics_frame
 		var toes: Array = player.rig._last_toes
@@ -143,9 +155,18 @@ func _smooth() -> void:
 			for i in 2:
 				worst = maxf(worst, (toes[i] - prev[i]).length())
 		prev = toes.duplicate()
+		hull_worst = maxf(hull_worst, absf(player.rig.hull_angle - prev_hull))
+		prev_hull = player.rig.hull_angle
+		# 出刀 / 收刀那一帧刀臂角度的跳变
+		if (player.slash_step >= 0) != (prev_slash >= 0):
+			blade_jump = maxf(blade_jump, absf(rad_to_deg(angle_difference(deg_to_rad(prev_blade), deg_to_rad(player.rig._blade_angle)))))
+		prev_slash = player.slash_step
+		prev_blade = player.rig._blade_angle
 	player.input = load("res://scripts/player/player_input.gd").new()
-	print("smooth: 脚尖单帧最大位移 %.1f 像素" % worst)
+	print("smooth: 脚尖单帧最大 %.1f 像素，机身单帧最大 %.1f°，出刀/收刀那帧刀臂跳 %.1f°" % [worst, hull_worst, blade_jump])
 	_check(worst <= 14.0, "动作切换时脚不跳变（单帧最大 %.1f 像素）" % worst)
+	_check(hull_worst <= 6.0, "机身角度单帧变化不超过 6°（%.1f°）" % hull_worst)
+	_check(blade_jump <= 25.0, "出刀/收刀时刀臂不一帧跳过去（%.1f°）" % blade_jump)
 
 
 ## 低矮通道：不滑铲过不去，滑铲能过去

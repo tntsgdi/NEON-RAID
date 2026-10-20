@@ -33,6 +33,7 @@ const STRINGS := {
 	"TUNE_run_speed": ["疾跑速度", "Run speed"],
 	"TUNE_sprint_speed": ["疾驰速度", "Sprint speed"],
 	"TUNE_sprint_delay": ["持续跑多久进疾驰", "Time to sprint"],
+	"TUNE_sprint_max": ["疾驰 5 秒后的上限", "Sprint cap after 5s"],
 	"TUNE_sprint_accel": ["疾驰加速度", "Sprint accel"],
 	"TUNE_run_accel_time": ["起步到全速(秒)", "Time to top speed"],
 	"TUNE_ground_decel": ["地面松手减速", "Ground release decel"],
