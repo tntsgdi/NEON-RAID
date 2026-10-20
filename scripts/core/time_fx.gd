@@ -8,6 +8,8 @@ var _clock := 0.0
 var _hitstop_until := 0.0
 var _slow_until := 0.0
 var _slow_scale := 1.0
+## 慢动作的来源："possess" = 夺壳光流（不算神经超频，不触发超频的提示、色差和染色）
+var _slow_tag := ""
 
 
 func _ready() -> void:
@@ -20,14 +22,17 @@ func hitstop(sec: float) -> void:
 	_apply()
 
 
-func slowmo(sec: float, scale: float) -> void:
+func slowmo(sec: float, scale: float, tag := "") -> void:
+	if tag == "possess" and _clock < _slow_until and _slow_tag == "":
+		return  # 超频慢动作期间夺壳：不打断超频
 	_slow_until = maxf(_slow_until, _clock + sec)
 	_slow_scale = scale
+	_slow_tag = tag
 	_apply()
 
 
 func slowmo_active() -> bool:
-	return _clock < _slow_until
+	return _clock < _slow_until and _slow_tag == ""
 
 
 func reset() -> void:

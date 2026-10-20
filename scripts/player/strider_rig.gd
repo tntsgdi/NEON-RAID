@@ -90,6 +90,8 @@ var keys := {}
 var _blade_off := 0.0
 ## 受击后仰的剩余时间（目镜同时闪红）
 var _flinch := 0.0
+## 醒来：目镜和核心由暗到亮的剩余时间
+var _wake := 0.0
 var _blade_t := 1.0
 ## 刀臂不出刀时是弹簧（换持刀姿势会甩过去、带一点过冲）
 var _blade_vel := 0.0
@@ -319,6 +321,9 @@ func update(m: Dictionary, delta: float) -> void:
 	var eye: Color = CYAN.lerp(Color.WHITE, g) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
 	if _flinch > 0.0:
 		eye = eye.lerp(Neon.RED_HOT, _flinch / 0.25)
+	_wake = maxf(_wake - delta, 0.0)
+	if _wake > 0.0:
+		eye = Color(0.1, 0.3, 0.35).lerp(eye, pow(1.0 - _wake / 0.35, 2.0))
 	_shapes.append(["poly", visor, eye, CYAN if m.glow >= 0.0 else EDGE_BACK])
 	# 待机：目镜上一道亮光来回扫（机器在"看"）
 	if state == "idle" and m.glow >= 0.0:
@@ -508,6 +513,13 @@ func ground_shift(dy: float) -> void:
 
 func kick() -> void:
 	_recoil = 3.0
+
+
+## 意识回到这具机体：目镜由暗到亮，身体一抖、髋一沉再站稳
+func wake_up() -> void:
+	_wake = 0.35
+	_pelvis_vel += 80.0
+	_hull_vel += 260.0
 
 
 ## 受击：机身猛地后仰、髋往下一沉，目镜闪红 0.25 秒（之后弹簧自己弹回来）

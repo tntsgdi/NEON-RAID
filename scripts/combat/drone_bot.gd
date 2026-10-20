@@ -84,6 +84,12 @@ func gun_pos() -> Vector2:
 	return global_position + Vector2(0, 7)
 
 
+## 意识光流到达：机身往下一沉再稳住
+func wake() -> void:
+	velocity.y += 90.0
+	_flash = 0.05
+
+
 ## 返回 0 = 没打到，1 = 打到
 func take_hit(dir: Vector2, power: int, _kind := "slash") -> int:
 	if _dead:

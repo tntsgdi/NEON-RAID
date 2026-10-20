@@ -973,6 +973,11 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	add_to_group("controlled")
 
 
+## 意识光流到达
+func wake() -> void:
+	rig.wake_up()
+
+
 func hurt_rect() -> Rect2:
 	return Rect2(global_position + Vector2(-_rect.size.x * 0.5, -_rect.size.y), _rect.size)
 

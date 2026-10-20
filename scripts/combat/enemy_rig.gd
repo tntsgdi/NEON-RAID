@@ -45,6 +45,8 @@ var _head_rot := 0.0
 var _head_v := 0.0
 ## 受击框（骨架本地坐标）：head / body / legs，EnemyBot 每帧换成世界坐标交给 Hurtboxes
 var parts_local := {}
+## 被夺后"醒来"：目镜由暗到亮（剩余时间）
+var wake := 0.0
 
 
 ## 被打：躯干向后弹，翻滚冲量（power 越大越猛）
@@ -188,6 +190,9 @@ func update(m: Dictionary, delta: float) -> void:
 	var red := Color(0.3, 1.1, 1.25) if controlled else Color(1.25, 0.26, 0.32)
 	var dark := Color(0.05, 0.14, 0.18) if controlled else Color(0.2, 0.05, 0.08)
 	var eye := Neon.CYAN_HOT if controlled else Neon.RED_HOT
+	wake = maxf(wake - delta, 0.0)
+	if wake > 0.0:
+		eye = Color(0.1, 0.25, 0.3).lerp(eye, pow(1.0 - wake / 0.35, 2.0))
 	var fill := Color.WHITE if flash else dark
 	var metal := Color(0.42, 0.38, 0.44)
 	_shapes.clear()

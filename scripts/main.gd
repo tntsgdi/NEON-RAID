@@ -221,6 +221,11 @@ func shockwave(world_pos: Vector2) -> void:
 
 
 ## 色差脉冲（重击、受伤、神经超频）
+## 其他机体（重装机等）也能震屏
+func impact(strength: float, dir: Vector2) -> void:
+	_on_impact(strength, dir)
+
+
 func aberrate(amount: float) -> void:
 	_ca = maxf(_ca, amount)
 
@@ -350,6 +355,8 @@ func _on_shell_changed(shell: Node2D) -> void:
 		_tip("TIP_SHELL_DRONE")
 	elif shell is EnemyBot:
 		_tip("TIP_SHELL_BOT")
+	elif shell is HeavyBot:
+		_tip("TIP_SHELL_HEAVY")
 	elif shell is Wisp:
 		_tip("TIP_WISP")
 
@@ -464,6 +471,9 @@ func _process(delta: float) -> void:
 	elif body is DroneBot:
 		hud.set_shell(tr("SHELL_DRONE"))
 		hud.refresh_combat(body.hp, DroneBot.MAX_HP, 0.0, 0.0, false)
+	elif body is HeavyBot:
+		hud.set_shell(tr("SHELL_HEAVY"))
+		hud.refresh_combat(body.hp, HeavyBot.CONTROL_HP, 0.0, 0.0, false)
 	else:
 		hud.set_shell(tr("SHELL_WISP"))
 		hud.refresh_combat(0, 0, 0.0, 0.0, false)
@@ -481,6 +491,8 @@ func _physics_process(delta: float) -> void:
 	var bvel: Vector2 = body.velocity if "velocity" in body else Vector2.ZERO
 	_look = lerpf(_look, clampf(bvel.x * T.camera_look_ahead, -170.0, 170.0), 1.0 - exp(-5.0 * delta))
 	var target := body.global_position + Vector2(_look, -40.0)
+	if is_instance_valid(controller.flow) and not controller.flow.done:
+		target = controller.flow.global_position + Vector2(0, -22.0)
 	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-12.0 * delta))
 	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-7.0 * delta))
 	# 越快镜头拉得越远：跑档最多拉远 6%，疾驰档 12%；进入疾驰的一刻先猛缩一下再拉远

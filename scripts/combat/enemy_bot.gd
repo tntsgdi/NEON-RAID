@@ -393,6 +393,13 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	add_to_group("controlled")
 
 
+## 意识光流到达：目镜由暗到亮，身体一抖、往下一沉再站稳
+func wake() -> void:
+	rig.wake = 0.35
+	rig._pelvis_v += 70.0
+	rig._hit_v += 7.0 * facing
+
+
 ## 意识离开：断电报废
 func release_control() -> void:
 	controlled = false

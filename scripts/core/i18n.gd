@@ -113,6 +113,8 @@ Dev: F1 tuning · F3 pixel/HD"],
 	"SHELL_STRIDER": ["R-0 行者 · 基础机体", "R-0 STRIDER · BASE"],
 	"SHELL_BOT": ["SB-7 安保机 · 夺取", "SB-7 SECURITY · SEIZED"],
 	"SHELL_DRONE": ["DR-2 侦察机 · 夺取", "DR-2 SCOUT · SEIZED"],
+	"SHELL_HEAVY": ["HV-9 重装机 · 夺取", "HV-9 HEAVY · SEIZED"],
+	"TIP_SHELL_HEAVY": ["重装机：J 冲撞（撞碎黄黑警示墙、直接破盾）· K 砸地（砸穿警示地板；空中 K 从高处砸下）· 跳不高、不能爬墙", "Heavy: J ram (breaks hazard walls & shields) · K slam (breaks hazard floors; K in air = dive) · low jump, no wall walk"],
 	"SHELL_WISP": ["意识体 · 无壳", "CONSCIOUSNESS · NO SHELL"],
 	"TUNE_camera_look_ahead": ["镜头前瞻", "Camera look-ahead"],
 }

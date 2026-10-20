@@ -30,6 +30,9 @@ func _run() -> void:
 	await _aim_interrupt()
 	await _crowd()
 	await _combo_magnet()
+	await _soul_flow()
+	await _heavy_controlled()
+	await _heavy_hostile()
 
 	if failures.is_empty():
 		print("M4 TEST PASS")
@@ -167,3 +170,94 @@ func _combo_magnet() -> void:
 	await _drive(Vector2(150, 0), steps)
 	var hits: int = hp0 - (e.hp if is_instance_valid(e) and e.alive() else -99)
 	_check(not is_instance_valid(e) or not e.alive() or hp0 - e.hp >= 3, "三连击三刀都打中被击退的敌人（掉血 %d）" % hits)
+
+
+## 夺壳光流：夺的一瞬间时间放慢、光流飞过去；到达后新壳"醒来"
+func _soul_flow() -> void:
+	await _fresh()
+	var e = _bot(Vector2(150, 0), false, false)
+	await _frames(3)
+	main.place(Vector2(40, 0))
+	await physics_frame
+	main.controller.possess(e)
+	await physics_frame
+	_check(Engine.time_scale < 0.9, "夺壳时时间放慢（%.2f）" % Engine.time_scale)
+	_check(is_instance_valid(main.controller.flow), "意识光流飞向新机体")
+	var woke := false
+	for i in 40:
+		await physics_frame
+		if e.rig.wake > 0.0:
+			woke = true
+	_check(woke, "光流到达后新机体醒来（目镜由暗到亮）")
+	_check(Engine.time_scale > 0.95, "光流结束时间恢复（%.2f）" % Engine.time_scale)
+	main.controller.return_to_base(Vector2(40, 0))
+	await physics_frame
+
+
+func _heavy(pos: Vector2, hostile: bool):
+	var h = load("res://scripts/combat/heavy_bot.gd").new()
+	h.hostile = hostile
+	h.position = pos
+	h.player = player if hostile else null
+	h.fx_parent = arena
+	arena.add_child(h)
+	return h
+
+
+## 停放的重装机：夺过来 → J 冲撞撞碎可破墙 → K 砸地砸穿薄地板；意识离开后跪下、还能再夺
+func _heavy_controlled() -> void:
+	await _fresh()
+	var h = _heavy(Vector2(-200, 0), false)
+	var brk = load("res://scripts/level/breakable.gd")
+	var wall = brk.make(arena, Rect2(-120, -60, 16, 60), "wall")
+	await _frames(5)
+	_check(h.is_in_group("possessable"), "停放的重装机可以夺")
+	main.place(Vector2(-260, 0))
+	await physics_frame
+	main.controller.possess(h)
+	await _frames(30)
+	_check(main.controller.current == h and h.controlled, "夺到重装机")
+	var inp = load("res://scripts/player/scripted_input.gd").new([{"frames": 1, "move": R}, {"frames": 4}, {"frames": 1, "press": ["slash"]}, {"frames": 50}])
+	main.controller.input = inp
+	h.input = inp
+	while not inp.done:
+		await physics_frame
+	_check(not is_instance_valid(wall), "J 冲撞撞碎可破墙")
+	var n := 0
+	while (h.state != 0 or absf(h.velocity.x) > 1.0) and n < 240:
+		await physics_frame
+		n += 1
+	var floor_b = brk.make(arena, Rect2(h.global_position.x - 20, 0, 40, 8), "floor")
+	inp = load("res://scripts/player/scripted_input.gd").new([{"frames": 2}, {"frames": 1, "press": ["shoot"]}, {"frames": 60}])
+	main.controller.input = inp
+	h.input = inp
+	while not inp.done:
+		await physics_frame
+	_check(not is_instance_valid(floor_b), "K 砸地砸穿薄地板")
+	main.controller.input = load("res://scripts/player/device_input.gd").new()
+	var hp0: int = h.hp
+	var b = load("res://scripts/combat/bullet.gd")
+	_check(h.velocity.x == 0.0 or absf(h.velocity.x) < 200.0, "重装机不会被打退")
+	main.controller.return_to_base(Vector2(-300, 0))
+	await _frames(5)
+	_check(is_instance_valid(h) and h.is_in_group("possessable") and not h.controlled, "意识离开后重装机跪下，还能再夺")
+	h.queue_free()
+
+
+## 敌对的精英重装机：霸体（不被打退）；耐久打空 → 瘫痪可夺；没夺就站起来、耐久回一半
+func _heavy_hostile() -> void:
+	await _fresh()
+	var h = _heavy(Vector2(200, 0), true)
+	h.player = null
+	await _frames(5)
+	_check(not h.is_in_group("possessable"), "敌对重装机一开始不能夺")
+	var x0: float = h.global_position.x
+	for i in 4:
+		h.take_hit(Vector2(1, 0), 2, "slash")
+	await _frames(10)
+	_check(absf(h.global_position.x - x0) < 8.0, "挨了几刀没被打退（位移 %.1f）" % absf(h.global_position.x - x0))
+	_check(h.state == h.State.STUNNED and h.is_in_group("possessable"), "耐久打空 → 瘫痪、可以夺")
+	for i in 560:
+		await physics_frame
+	_check(h.state != h.State.STUNNED and not h.is_in_group("possessable") and is_equal_approx(h.poise, h.POISE * 0.5), "4 秒没夺就站起来，耐久回一半（%.1f）" % h.poise)
+	h.queue_free()

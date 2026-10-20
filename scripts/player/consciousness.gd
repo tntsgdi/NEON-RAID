@@ -21,6 +21,8 @@ var lock_in_range := false
 var cooldown := 0.0
 var world: Node2D
 var reticle: Reticle
+## 正在飞的意识光流（镜头跟着它）
+var flow: SoulFlow
 
 
 func setup(base_shell: Player, world_node: Node2D) -> void:
@@ -158,11 +160,11 @@ func possess(target: Node2D) -> void:
 	var old := current
 	var from: Vector2 = old.global_position + Vector2(0, -16)
 	var vel: Vector2 = old.velocity * 0.7 if "velocity" in old else Vector2.ZERO
-	FxBeam.spawn(world, from, target.center())
-	Fx.flash(world, target.center(), Neon.WHITE_HOT, 16.0)
-	Fx.ring(world, target.center(), 22.0)
+	# 意识光流：时间放慢 0.2 秒，一团光沿弧线从旧壳流进新壳；到达时新壳醒来
+	flow = SoulFlow.spawn(world, from, target)
+	Fx.flash(world, from, Color(0.6, 1.8, 2.0), 10.0)
 	Audio.play("possess", -2.0)
-	TimeFx.hitstop(0.07)
+	TimeFx.slowmo(SoulFlow.DURATION, 0.35, "possess")
 	get_tree().call_group("game", "shockwave", target.center())
 	_detach(old)
 	old.release_control()
