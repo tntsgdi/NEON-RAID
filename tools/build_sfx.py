@@ -45,6 +45,13 @@ SFX = {
     "hurt": {"cat": "hit", "layers": [("PUNCH_PERCUSSIVE_HEAVY_06", 0.0, 0.4, 0), ("Broken_Robot_Morphing_Short_Static_Pitch_Confused_Glitch_02", 0.0, 0.4, -6)]},
     "charge": {"cat": "ui", "layers": [("electricity_surge_discharge_electrical_arc_crackling_002_01", 0.0, 0.5, -2)]},
     "shield_block": {"cat": "hit", "layers": [("cinematic_metal_impact_050", 0.0, 0.4, 0)]},
+    # 疾驰：进档时的一声风啸；wind 是循环用的风声（下面单独做无缝循环）
+    "sprint": {"cat": "whoosh", "lp": 6000, "layers": [("WINDDsgn_Wind, Rush, Whoosh, Long x5 01", 0.02, 0.6, 0), ("@ring", 0.0, 0.3, -12)]},
+}
+
+# 循环音：[文件名片段, 起点, 时长]，首尾交叉淡化成无缝循环
+LOOPS = {
+    "wind": ("@wind", 0.0, 3.0),
 }
 
 
@@ -113,8 +120,33 @@ def lowpass(x, cut):
     return sosfilt(butter(4, cut, "low", fs=RATE, output="sos"), x).astype(np.float32)
 
 
+def make_loop(part, start, dur):
+    if part == "@wind":
+        # 风声：低通噪声，强弱缓慢起伏（两条不同速度的正弦调制），首尾交叉淡化
+        n = int((dur + 0.4) * RATE)
+        t = np.arange(n) / RATE
+        noise = np.random.default_rng(9).standard_normal(n)
+        from scipy.signal import butter, sosfilt
+        x = sosfilt(butter(2, [250, 1800], "band", fs=RATE, output="sos"), noise)
+        x *= 0.7 + 0.2 * np.sin(2 * np.pi * 0.5 * t) + 0.1 * np.sin(2 * np.pi * 1.3 * t + 1.0)
+        x = x.astype(np.float32)
+    else:
+        x = load(part, start, dur + 0.4)
+    x = lowpass(x, 5000)
+    fade = int(0.4 * RATE)
+    body = x[: len(x) - fade].copy()
+    tail = x[len(x) - fade:]
+    body[:fade] = body[:fade] * np.linspace(0, 1, fade) + tail * np.linspace(1, 0, fade)
+    rms = np.sqrt(np.mean(body ** 2)) + 1e-9
+    return (body * (10 ** (-22 / 20) / rms)).astype(np.float32)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
+    for name, (part, start, dur) in LOOPS.items():
+        y = make_loop(part, start, dur)
+        sf.write(os.path.join(OUT, name + ".wav"), y, RATE, subtype="PCM_16")
+        print("%-12s %.2fs  (loop) <- %s" % (name, len(y) / RATE, part))
     for name, recipe in SFX.items():
         y = build(recipe)
         sf.write(os.path.join(OUT, name + ".wav"), y, RATE, subtype="PCM_16")

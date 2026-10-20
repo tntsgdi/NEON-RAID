@@ -32,6 +32,8 @@ func _run() -> void:
 	_check(root.get_node("Tuning").testing, "测试运行应被识别（不读写 tuning.json）")
 
 	await _combo()
+	await _sprint()
+	await _smooth()
 	await _tunnel()
 	await _gap()
 	await _shaft()
@@ -104,6 +106,46 @@ func _combo() -> void:
 	var last: Dictionary = log[-2]  # 最后一帧脚本已结束、松了方向键
 	_check(last.state == GROUND and absf(last.vel.x) >= T.run_speed * 0.95, "落地后继续全速奔跑（%.0f）" % absf(last.vel.x))
 	print("combo: 最低速度 %.0f，到全速 %d 帧，终点 x=%.0f" % [min_speed, reached, last.pos.x])
+
+
+## 疾驰档：持续全速跑进入疾驰并继续加速；反方向立即掉档
+func _sprint() -> void:
+	var log := await _drive(Vector2(60, 0), [{"frames": 150, "move": R}])
+	var top := 0.0
+	for e in log:
+		top = maxf(top, absf(e.vel.x))
+	_check(player.sprinting and top >= T.sprint_speed * 0.95, "持续跑 1.25 秒进入疾驰档（最高 %.0f）" % top)
+	await _drive(player.global_position, [{"frames": 2, "move": L}])
+	_check(not player.sprinting, "反方向立即掉出疾驰档")
+
+
+## 动作衔接：一串跑→滑铲→跳→冲刺→挥刀→落地→急停转身里，脚尖每帧的位移不应突然跳变
+func _smooth() -> void:
+	main.place(Vector2(60, 0))
+	await physics_frame
+	var inp = load("res://scripts/player/scripted_input.gd").new([
+		{"frames": 40, "move": R},
+		{"frames": 16, "move": R, "press": ["slide"], "hold": ["slide"]},
+		{"frames": 20, "move": R, "press": ["jump"], "hold": ["jump"]},
+		{"frames": 4, "move": R, "press": ["dash"]},
+		{"frames": 1, "move": R, "press": ["slash"]},
+		{"until": func(p): return p.is_on_floor() and p.state == GROUND, "max": 240, "move": R},
+		{"frames": 20, "move": R},
+		{"frames": 30, "move": L},
+	])
+	player.input = inp
+	var prev := []
+	var worst := 0.0
+	while not inp.done:
+		await physics_frame
+		var toes: Array = player.rig._last_toes
+		if not prev.is_empty():
+			for i in 2:
+				worst = maxf(worst, (toes[i] - prev[i]).length())
+		prev = toes.duplicate()
+	player.input = load("res://scripts/player/player_input.gd").new()
+	print("smooth: 脚尖单帧最大位移 %.1f 像素" % worst)
+	_check(worst <= 14.0, "动作切换时脚不跳变（单帧最大 %.1f 像素）" % worst)
 
 
 ## 低矮通道：不滑铲过不去，滑铲能过去

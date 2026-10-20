@@ -7,6 +7,7 @@ uniform vec2 shock_center = vec2(0.5);
 uniform float shock_t = 1.0;          // 冲击波进度 0..1，>=1 关闭
 uniform float vignette = 0.38;
 uniform float aspect = 1.7778;
+uniform float speed_blur = 0.0;       // 疾驰时屏幕左右边缘的横向模糊（0..1）
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -23,6 +24,14 @@ void fragment() {
 	col.r = texture(screen_tex, uv + off).r;
 	col.g = texture(screen_tex, uv).g;
 	col.b = texture(screen_tex, uv - off).b;
+	if (speed_blur > 0.01) {
+		float edge = smoothstep(0.22, 0.5, abs(uv.x - 0.5)) * speed_blur;
+		vec3 acc = col;
+		for (int i = 1; i <= 4; i++) {
+			acc += texture(screen_tex, uv + vec2(float(i) * edge * SCREEN_PIXEL_SIZE.x * 7.0, 0.0)).rgb;
+		}
+		col = acc / 5.0;
+	}
 	float v = length((uv - vec2(0.5)) * vec2(aspect, 1.0)) / 1.25;
 	col *= 1.0 - vignette * smoothstep(0.35, 0.95, v);
 	COLOR = vec4(col, 1.0);

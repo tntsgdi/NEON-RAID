@@ -22,10 +22,14 @@ func _run() -> void:
 	p = main.player
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 
-	# 跑步：一个完整步幅
-	_drive(Vector2(100, 0), Vector2(260, 0), [{"frames": 9999, "move": R}])
-	await _frames(40)
+	# 疾驰：一个完整步幅（先跑够进入疾驰档）
+	_drive(Vector2(60, 0), Vector2(340, 0), [{"frames": 9999, "move": R}])
+	await _frames(50)
 	await _strip("eval_run.png", 8, 2)
+
+	# 起步 → 跑 → 进入疾驰（每 6 帧一张，约 1.6 秒）
+	_drive(Vector2(60, 0), Vector2.ZERO, [{"frames": 9999, "move": R}])
+	await _strip("eval_accel.png", 10, 6)
 
 	# 起步 → 急停转身
 	_drive(Vector2(100, 0), Vector2.ZERO, [{"frames": 30, "move": R}, {"frames": 9999, "move": Vector2(-1, 0)}])

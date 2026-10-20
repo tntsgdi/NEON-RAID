@@ -13,6 +13,8 @@ signal died
 signal overclocked
 ## 技巧统计（评级用）：kind = "deflect" / "parry" / "perfect_dodge"
 signal skill(kind: String)
+## 进入疾驰档的一刻
+signal sprint_started
 
 enum State { GROUND, AIR, DASH, SLIDE, WALL }
 const STATE_NAMES := ["ground", "air", "dash", "slide", "wall"]
@@ -60,6 +62,10 @@ var _squash := Vector2.ONE
 var _prev_vx := 0.0
 var _skid_dust := 0.0
 var _air_hang_used := false
+## 疾驰档：持续全速跑 sprint_delay 秒后进入，急停/转身/撞墙/挨打掉回普通跑
+var sprinting := false
+var _sprint_t := 0.0
+var _sprint_drop := 0.0
 var _streak_timer := 0.0
 
 # 挥刀层
@@ -117,6 +123,8 @@ func reset_at(pos: Vector2) -> void:
 	_wall_coyote = 0.0
 	_squash = Vector2.ONE
 	_air_dashes = int(Tuning.v.air_dashes)
+	sprinting = false
+	_sprint_t = 0.0
 	hp = MAX_HP
 	energy = Tuning.v.gun_energy
 	overclock_charge = 0.0
@@ -158,6 +166,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_ledge_assist()
 	_after_move(vy_before, T)
+	_update_sprint(delta, T)
 	_update_slash(delta, T)
 	_update_gun(delta, T)
 	_update_facing()
@@ -419,6 +428,9 @@ func _land(vy: float, T: Dictionary) -> void:
 	_land_squash = hit
 	_squash = Vector2(1.0 + 0.3 * hit, 1.0 - 0.28 * hit)
 	_set_state(State.GROUND)
+	# 带速度落地：步伐从前脚着地开始，跑步动作直接接上，不会先站定再迈腿
+	if absf(velocity.x) > T.run_speed * 0.3:
+		_run_phase = 0.02
 	if hit > 0.25:
 		Fx.dust(fx_parent, global_position, 0.0, 4 + int(hit * 8))
 	if hit > 0.6:
@@ -428,6 +440,36 @@ func _land(vy: float, T: Dictionary) -> void:
 	landed.emit(hit)
 	if input.slide_held and absf(velocity.x) > 150.0:
 		_start_slide(T)
+
+
+# ---------------------------------------------------------------- 疾驰档
+
+func _update_sprint(delta: float, T: Dictionary) -> void:
+	var d := _dir_x()
+	var same := d != 0 and signf(velocity.x) == d
+	if sprinting:
+		var lost: bool = not same or absf(velocity.x) < T.run_speed * 0.75 or state == State.WALL or (is_on_wall() and state != State.DASH)
+		if not same and d != 0:
+			sprinting = false  # 反方向：立即掉档
+		elif lost:
+			_sprint_drop += delta
+			if _sprint_drop > 0.12:
+				sprinting = false
+		else:
+			_sprint_drop = 0.0
+		if not sprinting:
+			_sprint_t = 0.0
+		return
+	if same and absf(velocity.x) >= T.run_speed * 0.92 and state != State.WALL:
+		_sprint_t += delta
+		if _sprint_t >= T.sprint_delay:
+			sprinting = true
+			_sprint_drop = 0.0
+			Fx.ring(fx_parent, global_position + Vector2(-facing * 22, -14), 18.0)
+			Audio.play("sprint", -4.0)
+			sprint_started.emit()
+	else:
+		_sprint_t = 0.0
 
 
 # ---------------------------------------------------------------- 挥刀层
@@ -644,6 +686,8 @@ func hurt(dir: Vector2, dmg: int) -> void:
 	var T: Dictionary = Tuning.v
 	hp -= dmg
 	_iframes = T.iframes
+	sprinting = false
+	_sprint_t = 0.0
 	slash_step = -1
 	if _rect.size == LOW and not _ceiling_blocked():
 		_set_low(false)
@@ -702,7 +746,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 			elif ratio > 0.05:
 				mode = "run"
 				var before := _run_phase
-				_run_phase = fmod(_run_phase + absf(velocity.x) * delta / StriderRig.stride(ratio), 1.0)
+				_run_phase = fmod(_run_phase + absf(velocity.x) * delta / StriderRig.stride_px(absf(velocity.x)), 1.0)
 				if (before < 0.5 and _run_phase >= 0.5) or _run_phase < before:
 					_footstep(ratio)
 		State.AIR:
@@ -726,6 +770,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 		"slash_t": clampf(_slash_time / slash_duration(), 0.0, 1.0) if slash_step >= 0 else 0.0,
 		"slash_dir": rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle()),
 		"aim_local": Vector2(aim.x * facing, aim.y),
+		"sprint": sprinting,
 		"glow": 1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0,
 	}, delta)
 	if slash_step >= 0:
@@ -733,12 +778,13 @@ func _animate(delta: float, T: Dictionary) -> void:
 		trail.add(pts[0], pts[1])
 	# 受伤后无敌期间闪烁
 	rig.visible = _iframes <= 0.0 or int(_iframes * 20.0) % 2 == 0
-	# 高速时身边掠过速度线
+	# 高速时身边掠过速度线；疾驰时更密更长
 	if absf(velocity.x) > T.run_speed * 0.9 or state == State.DASH:
 		_streak_timer -= delta
 		if _streak_timer <= 0.0:
-			_streak_timer = 0.03
-			Fx.streak(fx_parent, global_position + Vector2(signf(velocity.x) * randf_range(10.0, 60.0), randf_range(-55.0, 4.0)), signf(velocity.x), randf_range(24.0, 56.0))
+			_streak_timer = 0.018 if sprinting else 0.03
+			var len_k := 1.6 if sprinting else 1.0
+			Fx.streak(fx_parent, global_position + Vector2(signf(velocity.x) * randf_range(10.0, 80.0), randf_range(-60.0, 4.0)), signf(velocity.x), randf_range(24.0, 56.0) * len_k)
 	# 超过疾跑速度时留下淡淡的残影
 	if state != State.DASH and absf(velocity.x) > T.run_speed * 1.15:
 		_ghost_timer -= delta
@@ -762,12 +808,14 @@ func _run_x(delta: float, accel: float, decel: float, turn: float, T: Dictionary
 	if _wall_lock > 0.0:
 		return
 	var dir := _dir_x()
-	var top: float = T.run_speed
+	var top: float = T.sprint_speed if sprinting else T.run_speed
 	var vx := velocity.x
 	if dir == 0:
 		vx = move_toward(vx, 0.0, decel * delta)
 	elif signf(vx) == dir and absf(vx) > top:
 		vx = move_toward(vx, dir * top, T.overspeed_decay * delta)
+	elif sprinting and signf(vx) == dir and absf(vx) >= T.run_speed * 0.95:
+		vx = move_toward(vx, dir * top, T.sprint_accel * delta)  # 疾驰档：在跑速之上继续慢慢提速
 	else:
 		var a := accel if (vx == 0.0 or signf(vx) == dir) else turn
 		vx = move_toward(vx, dir * top, a * delta)

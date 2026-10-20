@@ -32,6 +32,8 @@ var _shock_t := 1.0
 var _rain: CPUParticles2D
 var _splash: CPUParticles2D
 var _env: Environment
+var _wind: AudioStreamPlayer
+var _zoom_pulse := 0.0
 var settings_panel: SettingsPanel
 ## 本局技巧统计（评级用）
 var stats := {"hits": 0, "deflect": 0, "parry": 0, "perfect_dodge": 0}
@@ -71,6 +73,16 @@ func _ready() -> void:
 	player.fx_parent = world
 	player.impact.connect(_on_impact)
 	player.skill.connect(func(kind): stats[kind] += 1)
+	player.sprint_started.connect(func(): _zoom_pulse = 0.05)
+	_wind = AudioStreamPlayer.new()
+	var wind: AudioStreamWAV = load("res://assets/sfx/wind.wav")
+	wind.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wind.loop_end = wind.data.size() / 2
+	_wind.stream = wind
+	_wind.bus = &"SFX"
+	_wind.volume_db = -60.0
+	add_child(_wind)
+	_wind.play()
 	player.died.connect(_on_player_died, CONNECT_DEFERRED)
 	world.add_child(player)
 	_rain = _make_rain()
@@ -380,6 +392,11 @@ func _process(delta: float) -> void:
 	_ca = move_toward(_ca, 2.5 if TimeFx.slowmo_active() else 0.0, real * 30.0)
 	_shock_t = minf(_shock_t + real * 2.2, 1.0)
 	_post.set_shader_parameter("ca", _ca * Settings.v.aberration)
+	var fast := clampf((absf(player.velocity.x) - Tuning.v.run_speed) / maxf(Tuning.v.sprint_speed - Tuning.v.run_speed, 1.0), 0.0, 1.0)
+	_post.set_shader_parameter("speed_blur", fast * (1.0 if player.sprinting else 0.5))
+	# 风声：越快越响
+	var wind_k := clampf(absf(player.velocity.x) / Tuning.v.sprint_speed, 0.0, 1.3)
+	_wind.volume_db = linear_to_db(maxf(pow(wind_k, 2.0) * 0.9, 0.0001)) - 4.0
 	_env.glow_intensity = 0.42 * Settings.v.glow
 	_rain.emitting = Settings.v.rain > 0.5
 	_splash.emitting = Settings.v.rain > 0.5
@@ -403,10 +420,11 @@ func _physics_process(delta: float) -> void:
 	var target := player.global_position + Vector2(_look, -40.0)
 	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-12.0 * delta))
 	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-7.0 * delta))
-	# 越快镜头拉得越远，冲刺时再多拉一点
+	# 越快镜头拉得越远：跑档最多拉远 6%，疾驰档 12%；进入疾驰的一刻先猛缩一下再拉远
 	var speed_k := clampf(absf(player.velocity.x) / T.run_speed - 0.5, 0.0, 1.0)
-	var want_zoom := 1.0 - 0.06 * speed_k - (0.03 if player.state == Player.State.DASH else 0.0)
-	camera.zoom = Vector2.ONE * lerpf(camera.zoom.x, want_zoom, 1.0 - exp(-4.0 * delta))
+	var want_zoom := 1.0 - 0.06 * speed_k - (0.06 if player.sprinting else 0.0) - (0.03 if player.state == Player.State.DASH else 0.0)
+	_zoom_pulse = move_toward(_zoom_pulse, 0.0, delta * 0.25)
+	camera.zoom = Vector2.ONE * (lerpf(camera.zoom.x - _zoom_pulse * 0.0, want_zoom, 1.0 - exp(-3.0 * delta)) + _zoom_pulse)
 	_kick = _kick.lerp(Vector2.ZERO, 1.0 - exp(-18.0 * delta))
 	var jitter := Vector2.ZERO
 	if _shake > 0.05:

@@ -59,6 +59,14 @@ var _muzzle := Vector2.ZERO
 ## 转身：从 ±1 平滑过渡（中途压扁成一条，再翻过来），而不是瞬间翻面
 var turn := 1.0
 var _prev_blade := 150.0
+## 惯性化过渡：切换动作时，旧姿势和新姿势的差在约 0.1 秒内衰减到零（输入立即生效，画面不跳）
+const INERTIA_TAU := 0.035
+var _last_mode := ""
+var _last_toes := [Vector2.ZERO, Vector2.ZERO]
+var _last_tilts := [0.0, 0.0]
+var _toe_off := [Vector2.ZERO, Vector2.ZERO]
+var _tilt_off := [0.0, 0.0]
+var _inert_t := 1.0
 
 
 func _ready() -> void:
@@ -86,10 +94,10 @@ func update(m: Dictionary, delta: float) -> void:
 	var target_y := -HIP_H
 	match state:
 		"run":
-			# 每一步：落地时压低、蹬地时弹起，机身跟着点头
+			# 每一步：落地时压低、蹬地时弹起，机身跟着点头；疾驰档再压低、再前倾
 			var beat: float = sin(m.run_phase * TAU * 2.0)
-			target_angle = 14.0 + 26.0 * clampf(ratio, 0.0, 1.3) + beat * 3.0 * ratio
-			target_y = -HIP_H + 2.5 - absf(beat) * 4.5 * clampf(ratio, 0.0, 1.0)
+			target_angle = 14.0 + 26.0 * clampf(ratio, 0.0, 1.0) + beat * 3.0 * ratio + (7.0 if m.sprint else 0.0)
+			target_y = -HIP_H + 2.5 - absf(beat) * 4.5 * clampf(ratio, 0.0, 1.0) + (2.0 if m.sprint else 0.0)
 		"idle":
 			target_angle = 10.0 + sin(m.time * 2.2) * 1.5
 			target_y = -HIP_H + 1.0 + sin(m.time * 2.2) * 0.6
@@ -123,9 +131,22 @@ func update(m: Dictionary, delta: float) -> void:
 
 	# ---- 腿：脚尖落点 → 三节 IK（膝朝前、踝朝后）
 	var feet := _foot_targets(m, pelvis)
+	if state != _last_mode:
+		# 动作切换：记下旧脚位与新目标的差，接下来让它平滑衰减
+		for i in 2:
+			_toe_off[i] = _last_toes[i] - feet[i][0]
+			_tilt_off[i] = _last_tilts[i] - feet[i][1]
+		_inert_t = 0.0
+		_last_mode = state
+	_inert_t += delta
+	var fade := exp(-_inert_t / INERTIA_TAU)
 	var legs := []
 	for i in 2:
-		legs.append(_leg(pelvis, feet[i][0], feet[i][1]))
+		var toe: Vector2 = feet[i][0] + _toe_off[i] * fade
+		var tilt: float = feet[i][1] + _tilt_off[i] * fade
+		_last_toes[i] = toe
+		_last_tilts[i] = tilt
+		legs.append(_leg(pelvis, toe, tilt))
 
 	# ---- 刀臂
 	var shoulder := pelvis + SHOULDER.rotated(rot)
@@ -198,9 +219,9 @@ func update(m: Dictionary, delta: float) -> void:
 	queue_redraw()
 
 
-## 跑步步幅随速度从 48 拉长到 72 像素
-static func stride(ratio: float) -> float:
-	return lerpf(48.0, 72.0, clampf(ratio, 0.0, 1.0))
+## 跑步步幅随速度拉长（48–100 像素）：跑得越快步子越大，高速时步频不会快到发抖
+static func stride_px(speed: float) -> float:
+	return clampf(40.0 + speed * 0.13, 48.0, 100.0)
 
 
 ## 每条腿返回 [脚尖位置, 跖骨方向偏转（度，正值脚尖下垂）]
@@ -208,7 +229,7 @@ func _foot_targets(m: Dictionary, pelvis: Vector2) -> Array:
 	match m.state:
 		"run":
 			var out := []
-			var length := stride(m.speed_ratio)
+			var length := stride_px(absf(m.vel.x))
 			for i in 2:
 				var p := fmod(m.run_phase + 0.5 * i, 1.0)
 				var half := length * STANCE * 0.5
@@ -217,7 +238,7 @@ func _foot_targets(m: Dictionary, pelvis: Vector2) -> Array:
 				else:
 					var s := (p - STANCE) / (1.0 - STANCE)
 					var x := lerpf(-half, half, s * s * (3.0 - 2.0 * s))
-					var lift := sin(s * PI) * (6.0 + 8.0 * clampf(m.speed_ratio, 0.0, 1.0))
+					var lift := sin(s * PI) * (6.0 + 8.0 * clampf(m.speed_ratio, 0.0, 1.0) + (3.0 if m.sprint else 0.0))
 					out.append([Vector2(x + 4.0, -lift), 35.0 * sin(s * PI)])
 			return out
 		"skid":
