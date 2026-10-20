@@ -56,7 +56,6 @@ var _run_phase := 0.0
 var _idle_time := 0.0
 var _squash := Vector2.ONE
 var _prev_vx := 0.0
-var _lean := 0.0
 var _skid_dust := 0.0
 var _air_hang_used := false
 
@@ -72,7 +71,7 @@ var _combo_window := 0.0
 
 var _rect: RectangleShape2D
 var _shape: CollisionShape2D
-var rig: RobotRig
+var rig: StriderRig
 var trail: BladeTrail
 
 
@@ -85,7 +84,7 @@ func _ready() -> void:
 	_shape.shape = _rect
 	add_child(_shape)
 	_set_low(false)
-	rig = RobotRig.new()
+	rig = StriderRig.new()
 	add_child(rig)
 	if fx_parent == null:
 		fx_parent = get_parent()
@@ -502,7 +501,7 @@ func _do_hit(T: Dictionary) -> void:
 			Fx.sparks(fx_parent, closest, _slash_aim, 14 if heavy else 9)
 			slash_hit.emit(n)
 			hit_any = true
-	var s: Dictionary = Poses.SLASH[slash_step]
+	var s: Dictionary = StriderRig.SLASH[slash_step]
 	var base := rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle())
 	SlashFx.spawn(fx_parent, origin, base + s.from, base + s.to, facing, 14.0 + reach, heavy)
 	if hit_any:
@@ -630,60 +629,50 @@ func _update_facing() -> void:
 func _animate(delta: float, T: Dictionary) -> void:
 	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
 	rig.scale = Vector2(facing * _squash.x, _squash.y)
-	# 加速时前倾、减速时后仰
-	var accel := (velocity.x - _prev_vx) / maxf(delta, 0.0001)
-	_lean = lerpf(_lean, clampf(accel * facing * 0.008, -12.0, 14.0), 1.0 - exp(-12.0 * delta))
-	var target: Dictionary
-	var rate := 22.0
+	var ratio: float = absf(velocity.x) / T.run_speed
+	var mode := "idle"
 	match state:
 		State.GROUND:
-			var ratio: float = absf(velocity.x) / T.run_speed
 			if _skidding():
-				target = Poses.SKID
-				rate = 30.0
+				mode = "skid"
 				_skid_dust -= delta
 				if _skid_dust <= 0.0:
 					_skid_dust = 0.05
-					Fx.dust(fx_parent, global_position + Vector2(facing * 6, 0), float(facing), 2)
+					Fx.dust(fx_parent, global_position + Vector2(facing * 10, 0), float(facing), 2)
 			elif ratio > 0.05:
+				mode = "run"
 				var before := _run_phase
-				_run_phase = fmod(_run_phase + absf(velocity.x) * delta / Poses.STRIDE, 1.0)
+				_run_phase = fmod(_run_phase + absf(velocity.x) * delta / StriderRig.STRIDE, 1.0)
 				if (before < 0.5 and _run_phase >= 0.5) or _run_phase < before:
 					_footstep(ratio)
-				target = Poses.blend(Poses.IDLE, Poses.run(_run_phase, clampf(ratio, 0.0, 1.2)), clampf(ratio * 3.0, 0.0, 1.0))
-				target.torso += _lean
-				rate = 40.0
-			else:
-				target = Poses.idle(_idle_time)
-				target.torso += _lean * 0.5
 		State.AIR:
-			target = Poses.blend(Poses.JUMP, Poses.FALL, clampf(velocity.y / 400.0 * 0.5 + 0.5, 0.0, 1.0))
+			mode = "air"
 		State.DASH:
-			target = Poses.DASH
-			rate = 45.0
+			mode = "dash"
 		State.SLIDE:
-			target = Poses.SLIDE
-			rate = 45.0
+			mode = "slide"
 		State.WALL:
-			target = Poses.WALL
-	if _land_squash > 0.0:
-		target = target.duplicate()
-		target.hip_y += _land_squash * 6.0
-	rig.apply(target, delta, rate)
-	rig.aim_gun(Vector2(aim.x * facing, aim.y), 1.0 if _gun_raise > 0.0 else 0.3)
-	# 受伤后无敌期间闪烁
-	rig.visible = _iframes <= 0.0 or int(_iframes * 20.0) % 2 == 0
+			mode = "wall"
+	rig.update({
+		"state": mode,
+		"facing": facing,
+		"vel": velocity,
+		"accel_x": (velocity.x - _prev_vx) / maxf(delta, 0.0001),
+		"speed_ratio": ratio,
+		"run_phase": _run_phase,
+		"time": _idle_time,
+		"land_squash": _land_squash,
+		"slash_step": slash_step,
+		"slash_t": clampf(_slash_time / slash_duration(), 0.0, 1.0) if slash_step >= 0 else 0.0,
+		"slash_dir": rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle()),
+		"aim_local": Vector2(aim.x * facing, aim.y),
+		"glow": 1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0,
+	}, delta)
 	if slash_step >= 0:
-		var s: Dictionary = Poses.SLASH[slash_step]
-		var t := clampf(_slash_time / slash_duration(), 0.0, 1.0)
-		var e := 1.0 - pow(1.0 - t, 3.0)
-		var base := rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle())
-		rig.swing_blade(base + lerpf(s.from, s.to, e))
 		var pts := rig.blade_points()
 		trail.add(pts[0], pts[1])
-	else:
-		rig.release_blade()
-	rig.set_glow(1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0)
+	# 受伤后无敌期间闪烁
+	rig.visible = _iframes <= 0.0 or int(_iframes * 20.0) % 2 == 0
 	# 超过疾跑速度时留下淡淡的残影
 	if state != State.DASH and absf(velocity.x) > T.run_speed * 1.15:
 		_ghost_timer -= delta
@@ -698,15 +687,7 @@ func _footstep(ratio: float) -> void:
 
 
 func _spawn_ghost(alpha: float) -> void:
-	var g := rig.duplicate() as Node2D
-	fx_parent.add_child(g)
-	g.global_position = rig.global_position
-	g.scale = rig.scale
-	g.modulate = Color(0.3, 0.95, 1.0, alpha)
-	g.z_index = -1
-	var tw := g.create_tween()
-	tw.tween_property(g, "modulate:a", 0.0, 0.22)
-	tw.tween_callback(g.queue_free)
+	rig.spawn_ghost(fx_parent, alpha)
 
 
 # ---------------------------------------------------------------- 工具
