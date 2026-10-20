@@ -45,6 +45,11 @@ var _hit_once := false
 var _slam_air := false
 var _ram_hit := {}
 var _grace := 0.6
+## 被夺后的技能冷却：冲撞 0.8 秒、砸地 1.2 秒（不让重装机变成无限推土机）
+var _ram_cd := 0.0
+var _slam_cd := 0.0
+const RAM_CD := 0.8
+const SLAM_CD := 1.2
 
 
 func _ready() -> void:
@@ -226,6 +231,8 @@ func _physics_process(delta: float) -> void:
 	_flash = maxf(_flash - delta, 0.0)
 	_iframes = maxf(_iframes - delta, 0.0)
 	_grace = maxf(_grace - delta, 0.0)
+	_ram_cd = maxf(_ram_cd - delta, 0.0)
+	_slam_cd = maxf(_slam_cd - delta, 0.0)
 	velocity.y = minf(velocity.y + GRAVITY * delta, 900.0 if _slam_air else 650.0)
 	if controlled:
 		_controlled(delta)
@@ -336,13 +343,15 @@ func _controlled(delta: float) -> void:
 	if input.jump_pressed and is_on_floor():
 		velocity.y = -330.0  # 跳得很矮（约 34 像素）
 		Fx.dust(fx_parent, global_position, 0.0, 5)
-	if input.slash_pressed:
+	if input.slash_pressed and _ram_cd <= 0.0:
+		_ram_cd = RAM_CD
 		state = State.RAM
 		_t = 0.35
 		_ram_hit.clear()
 		Audio.play("dash", -4.0, 0.6)
 		get_tree().call_group("game", "impact", 2.0, Vector2(facing, 0))
-	elif input.shoot_pressed:
+	elif input.shoot_pressed and _slam_cd <= 0.0:
+		_slam_cd = SLAM_CD
 		if is_on_floor():
 			state = State.WINDUP_SLAM
 			_t = 0.22

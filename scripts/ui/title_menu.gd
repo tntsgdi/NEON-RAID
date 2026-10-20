@@ -198,7 +198,7 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var vp := get_viewport_rect().size
-	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.01, 0.02, 0.04, 0.72))
+	draw_rect(Rect2(Vector2.ZERO, vp), Color(0.01, 0.02, 0.04, 0.84))
 	# 扫描线
 	var y := fmod(_t * 40.0, 4.0)
 	while y < vp.y:
