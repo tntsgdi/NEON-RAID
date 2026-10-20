@@ -297,7 +297,6 @@ func _jump(T: Dictionary) -> void:
 	_squash = Vector2(0.8, 1.22)
 	_set_state(State.AIR)
 	Fx.dust(fx_parent, global_position, 0.0, 6)
-	Audio.play("jump", -10.0)
 
 
 ## 按住朝墙的方向按跳：轻推离墙、向上力度大，会回到同一面墙，单面墙也能一路爬上去；
@@ -319,7 +318,7 @@ func _wall_jump(T: Dictionary, wall: int) -> void:
 	_squash = Vector2(0.82, 1.2)
 	_set_state(State.AIR)
 	Fx.dust(fx_parent, global_position + Vector2(wall * 6, -12), float(-wall), 5)
-	Audio.play("walljump", -8.0)
+	Audio.play("walljump", -10.0)
 
 
 func _start_dash(T: Dictionary) -> void:
@@ -346,7 +345,7 @@ func _start_dash(T: Dictionary) -> void:
 	_squash = Vector2(1.25, 0.82)
 	_set_state(State.DASH)
 	Fx.dust(fx_parent, global_position, -d.x, 6)
-	Audio.play("dash", -6.0)
+	Audio.play("dash", -7.0)
 	impact.emit(1.0)
 
 
@@ -371,7 +370,7 @@ func _start_slide(T: Dictionary) -> void:
 	_set_low(true)
 	_set_state(State.SLIDE)
 	Fx.dust(fx_parent, global_position, float(-dir), 8)
-	Audio.play("slide", -8.0)
+	Audio.play("slide", -12.0)
 
 
 func _end_slide() -> void:
@@ -387,7 +386,8 @@ func _land(vy: float, T: Dictionary) -> void:
 	_set_state(State.GROUND)
 	if hit > 0.25:
 		Fx.dust(fx_parent, global_position, 0.0, 4 + int(hit * 8))
-		Audio.play("land", lerpf(-16.0, -4.0, hit))
+	if hit > 0.6:
+		Audio.play("land", lerpf(-18.0, -8.0, hit))
 	if hit > 0.85:
 		impact.emit(1.5)
 	landed.emit(hit)
@@ -433,7 +433,7 @@ func _start_slash(step: int, T: Dictionary) -> void:
 	_slash_aim = _slash_dir()
 	var heavy := step == 2 or _slash_dash
 	trail.heavy = heavy
-	Audio.play("swing_heavy" if heavy else "swing", -5.0)
+	Audio.play("swing_heavy" if heavy else "swing_%d" % (step + 1), -4.0)
 	# 出刀前冲：横斩在地面朝前踏一步；空中第一刀稍微滞空
 	var lunge: float = T.slash_lunge * (1.5 if step == 2 else 1.0)
 	var sx := float(facing)
@@ -576,7 +576,6 @@ func _animate(delta: float, T: Dictionary) -> void:
 
 
 func _footstep(ratio: float) -> void:
-	Audio.play("step", -18.0 + ratio * 4.0)
 	if ratio > 0.8:
 		Fx.dust(fx_parent, global_position + Vector2(-facing * 3, 0), float(-facing), 1)
 

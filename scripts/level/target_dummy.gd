@@ -58,7 +58,7 @@ func _break(dir: Vector2) -> void:
 	Fx.debris(fx_parent, center(), dir, 18, RED)
 	Fx.debris(fx_parent, center(), dir, 10, Color(0.3, 0.33, 0.4))
 	Fx.sparks(fx_parent, center(), dir, 14, Color(1.0, 0.6, 0.5))
-	Audio.play("break", -2.0)
+	Audio.play("break", -3.0)
 	broken.emit(center())
 
 
