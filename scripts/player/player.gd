@@ -1092,8 +1092,9 @@ func _animate(delta: float, T: Dictionary) -> void:
 		if absf(velocity.y) > 5.0:
 			_wall_up = velocity.y < 0.0
 		rig_facing = _wall_dir if _wall_up else -_wall_dir
-		rig.rotation = lerp_angle(rig.rotation, -PI * 0.5 * _wall_dir, 1.0 - exp(-20.0 * delta))
-		rig.position = rig.position.lerp(Vector2(_wall_dir * 6.0, -18.0), 1.0 - exp(-20.0 * delta))
+		# 上墙转 90°：约 0.1 秒转过去（太快头部一帧甩出 10 像素以上）
+		rig.rotation = lerp_angle(rig.rotation, -PI * 0.5 * _wall_dir, 1.0 - exp(-12.0 * delta))
+		rig.position = rig.position.lerp(Vector2(_wall_dir * 6.0, -18.0), 1.0 - exp(-14.0 * delta))
 		ratio = absf(velocity.y) / T.run_speed
 	else:
 		rig.rotation = lerp_angle(rig.rotation, 0.0, 1.0 - exp(-10.0 * delta))

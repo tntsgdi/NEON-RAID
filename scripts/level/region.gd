@@ -31,6 +31,8 @@ var _doors: Array = []
 var _relays: Array = []
 var _texts: Array = []       # [位置, key]
 var _keys: Array = []        # [字符, 位置, 机体]
+var _rows: Array = []
+var _base := 0
 const KEY_CHARS := ["h", "k", "w"]
 
 
@@ -55,17 +57,17 @@ func _ready() -> void:
 
 ## 把字符地图解析成方块（同一行连续的 # 合成一条，再把上下相同的条合成大矩形）和对象位置
 func _parse(rows: Array) -> void:
+	_rows = rows
 	var base := 0
 	for r in rows.size():
 		if (rows[r] as String).contains("@"):
 			base = r + 1
+	_base = base
 	var w := 0
 	for row in rows:
 		w = maxi(w, (row as String).length())
 	var runs := {}   # "x0,x1" -> [起始行, 当前行]
 	var finished: Array = []
-	var text_i := 0
-	var tip_i := 0
 	for r in rows.size():
 		var row: String = rows[r]
 		var y := (r - base) * CELL
@@ -94,15 +96,9 @@ func _parse(rows: Array) -> void:
 				"R":
 					_relays.append(pos)
 				"T":
-					var keys: Array = data.get("texts", [])
-					if text_i < keys.size():
-						_texts.append([pos + Vector2(0, -CELL), keys[text_i]])
-					text_i += 1
+					_texts.append([pos + Vector2(0, -CELL), ""])
 				"?":
-					var tk: Array = data.get("tips", [])
-					if tip_i < tk.size():
-						_tips.append([c * CELL, tk[tip_i]])
-					tip_i += 1
+					_tips.append([c * CELL, ""])
 				"g", "b", "r", "s", "d", "w", "H", "h", "k":
 					_spawns.append([ch, pos])
 			c += 1
@@ -123,11 +119,45 @@ func _parse(rows: Array) -> void:
 		var x0 := int(xs[0])
 		var x1 := int(xs[1])
 		solids.append(Rect2(x0 * CELL, (f[1] - base) * CELL, (x1 - x0 + 1) * CELL, (f[2] - f[1] + 1) * CELL))
+	# 文字和提示按从左到右的顺序对应 texts / tips（不是按扫描的行顺序）
+	_texts.sort_custom(func(a, b): return a[0].x < b[0].x)
+	_tips.sort_custom(func(a, b): return a[0] < b[0])
+	var keys: Array = data.get("texts", [])
+	for i in _texts.size():
+		_texts[i][1] = keys[i] if i < keys.size() else ""
+	_texts = _texts.filter(func(t): return t[1] != "")
+	var tk: Array = data.get("tips", [])
+	for i in _tips.size():
+		_tips[i][1] = tk[i] if i < tk.size() else ""
+	_tips = _tips.filter(func(t): return t[1] != "")
 	checkpoints.sort_custom(func(a, b): return a.x < b.x)
 	checkpoints.insert(0, start)
 	_bounds = Rect2(0, (0 - base) * CELL, w * CELL, rows.size() * CELL)
 	if finish_x <= 0.0:
 		finish_x = _bounds.end.x - CELL * 4.0
+
+
+## 世界坐标所在格子的原始字符（通关机器人看地形用；地图外 = " "）
+func char_at(p: Vector2) -> String:
+	var c := int(floor(p.x / CELL))
+	var r := int(floor(p.y / CELL)) + _base
+	if r < 0 or r >= _rows.size() or c < 0:
+		return " "
+	var row: String = _rows[r]
+	return row[c] if c < row.length() else " "
+
+
+## 这一格现在是不是实心（可破墙 / 地板被打碎、安保门打开后就不算）
+func solid_at(p: Vector2) -> bool:
+	var ch := char_at(p)
+	if ch == "#":
+		return true
+	if ch == "W" or ch == "F" or ch == "D":
+		var q := PhysicsPointQueryParameters2D.new()
+		q.position = Vector2(floor(p.x / CELL) * CELL + CELL * 0.5, floor(p.y / CELL) * CELL + CELL * 0.5)
+		q.collision_mask = 1
+		return not get_world_2d().direct_space_state.intersect_point(q).is_empty()
+	return false
 
 
 func start_pos() -> Vector2:
@@ -158,12 +188,19 @@ func is_finished(p: Node2D) -> bool:
 	return true
 
 
-func enemies_left() -> int:
-	var n := 0
+## 要求清场的区域：只算出口前 clear_span 像素（默认 1200）里的敌人——
+## 前面路过没打的敌人（比如砸穿地板掉下去以后再也回不去的上层）不会把关卡锁死
+func required_enemies() -> Array:
+	var span: float = data.get("clear_span", 1200.0)
+	var out := []
 	for a in _actors:
-		if is_instance_valid(a) and a.is_in_group("enemy") and a.alive():
-			n += 1
-	return n
+		if is_instance_valid(a) and a.is_in_group("enemy") and a.alive() and a.global_position.x >= finish_x - span:
+			out.append(a)
+	return out
+
+
+func enemies_left() -> int:
+	return required_enemies().size()
 
 
 func checkpoint_for(x: float) -> Vector2:

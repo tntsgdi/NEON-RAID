@@ -1,6 +1,10 @@
 extends SceneTree
 ## 丝滑探针：用一长串覆盖各种动作的脚本输入跑一遍，逐帧记录机体关键关节在屏幕上的位置（世界坐标减镜头），
 ## 找出单帧位移最大的跳变，附上当时的动作切换，方便逐个消掉。
+## 跳变量 = min(关节在屏幕上的位移, 关节相对机体原点的位移)：
+##   真正的骨架跳变两者都大；机体本身高速运动（起跳、冲刺）只有屏幕位移大；
+##   台阶 / 翻沿时机体被瞬移、骨架补偿留在原处，只有相对位移大——这两种都不算跳变。
+## 加 -- --assert：非刀关节超过 10 像素、刀尖超过 24 像素就判失败（m1 之外的独立门槛）。
 ## 运行：Godot --headless --path . -s tests/smooth_probe.gd --fixed-fps 60
 
 const R := Vector2(1, 0)
@@ -53,7 +57,9 @@ func _run() -> void:
 		for k in b.keys:
 			if k == "_dbg" or not a.keys.has(k):
 				continue
-			var d: float = (b.keys[k] - a.keys[k]).length()
+			var d_screen: float = (b.keys[k] - a.keys[k]).length()
+			var d_local: float = ((b.keys[k] - b.body) - (a.keys[k] - a.body)).length()
+			var d := minf(d_screen, d_local)
 			var limit := 14.0 if k == "blade_tip" else 7.0
 			if d > limit:
 				spikes.append([d, k, i, "%s→%s" % [NAMES[a.state], NAMES[b.state]], b.slash])
@@ -61,6 +67,9 @@ func _run() -> void:
 		for i in [806, 807, 808, 809, 810, 323, 324, 325, 326, 327, 896, 897, 898, 899]:
 			print(i, " ", NAMES[log[i].state], " pos ", log[i].pos.round(), " rig ", log[i].rig, " ", log[i].keys._dbg)
 	spikes.sort_custom(func(x, y): return x[0] > y[0])
+	if OS.get_cmdline_user_args().has("--assert"):
+		var bad := spikes.filter(func(x): return x[0] > (24.0 if x[1] == "blade_tip" else 10.0))
+		print("SMOOTH %s (%d 处超限)" % ["PASS" if bad.is_empty() else "FAIL", bad.size()])
 	print("frames=%d spikes=%d" % [log.size(), spikes.size()])
 	var shown := {}
 	for s in spikes:
@@ -90,5 +99,5 @@ func _record(main, p, start: Vector2, steps: Array) -> Array:
 			screen[k] = p.global_position + p.rig.keys[k] - cam
 		if OS.get_cmdline_user_args().has("--dump"):
 			screen["_dbg"] = [p.rig._blade_angle, p.rig.hull_angle, p.rig._pelvis_y, p.rig.turn, p.velocity.round(), p._run_phase, p.rig._last_mode, p.rig.keys.knee_b.round(), p.rig.keys.toe_b.round()]
-		log.append({"keys": screen, "state": p.state, "slash": p.slash_step, "seg": seg, "pos": p.global_position, "rig": [p.rig.position, p.rig.scale, p.rig.rotation, p.rig._pelvis_y]})
+		log.append({"body": p.global_position - cam, "keys": screen, "state": p.state, "slash": p.slash_step, "seg": seg, "pos": p.global_position, "rig": [p.rig.position, p.rig.scale, p.rig.rotation, p.rig._pelvis_y]})
 	return log
