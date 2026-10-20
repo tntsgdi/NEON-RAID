@@ -165,7 +165,8 @@ func _slash() -> void:
 	var d = main.range_.dummies[0]
 	var before: int = d.hits
 	var log := await _drive(Vector2(352, 0), [
-		{"frames": 2, "move": Vector2.ZERO, "aim": R},
+		{"frames": 1, "move": R},
+		{"frames": 20, "move": Vector2.ZERO},
 		{"frames": 1, "press": ["slash"]},
 		{"until": func(p): return p.slash_step == 0 and p._slash_time > 0.06, "max": 120},
 		{"frames": 1, "press": ["slash"]},
@@ -180,16 +181,19 @@ func _slash() -> void:
 		if e.slash >= 0:
 			steps_seen[e.slash] = true
 	_check(steps_seen.size() == 3, "三段连击都出现（%s）" % str(steps_seen.keys()))
-	# 吸附：鼠标朝斜上 35°，训练机在正前方，也能打中
-	var h0: int = d.hits
-	await _drive(Vector2(352, 0), [{"frames": 30, "aim": Vector2(0.82, -0.57)}, {"frames": 1, "press": ["slash"]}, {"frames": 40}])
-	_check(d.hits > h0 or not d.alive(), "挥刀吸附到瞄准方向 45° 内的敌人")
+	# 上挑：按住上再挥刀，刀朝正上方
+	await _drive(Vector2(352, 0), [{"frames": 2, "move": Vector2(0, -1)}, {"frames": 1, "move": Vector2(0, -1), "press": ["slash"]}, {"frames": 30, "move": Vector2(0, -1)}])
+	_check(player._slash_aim == Vector2.UP, "按住上挥刀 = 上挑（%s）" % str(player._slash_aim))
+	# 下劈：空中按住下挥刀，打中训练机会弹起来
+	var pogo := await _drive(Vector2(380, -58), [{"frames": 3, "move": Vector2(0, 1)}, {"frames": 1, "move": Vector2(0, 1), "press": ["slash"]}, {"frames": 40, "move": Vector2(0, 1)}])
+	var bounced := pogo.any(func(e): return e.vel.y < -300.0)
+	_check(player._slash_aim == Vector2.DOWN and bounced, "空中按住下挥刀 = 下劈，打中后弹起（%s）" % str(player._slash_aim))
 	# 打碎：一直砍到碎
 	var spam := []
 	for i in 12:
 		spam.append({"frames": 1, "press": ["slash"], "aim": R})
 		spam.append({"frames": 14, "aim": R})
-	await _drive(Vector2(352, 0), spam)
+	await _drive(Vector2(352, 0), [{"frames": 1, "move": R}] + spam)
 	var broke: bool = not d.alive() or d.hp == d.MAX_HP
 	_check(broke, "打满 HP 训练机会碎掉（hp=%d）" % d.hp)
 	for i in 200:

@@ -5,14 +5,15 @@ extends Node2D
 var tint := Color(0.06, 0.08, 0.12)
 var height := 200.0
 var seed_value := 1
-var window_color := Color(0.25, 0.85, 0.95, 0.25)
+var window_color := Color(0.25, 0.85, 0.95, 0.14)
 
 
 static func make() -> Node2D:
 	var root := Node2D.new()
 	root.name = "Backdrop"
-	root.add_child(_layer(Vector2(0.15, 0.3), Color(0.04, 0.05, 0.08), 260.0, 7))
-	root.add_child(_layer(Vector2(0.4, 0.6), Color(0.06, 0.08, 0.12), 180.0, 3))
+	# 背景压暗、低对比，免得被当成能站能蹬的墙
+	root.add_child(_layer(Vector2(0.15, 0.3), Color(0.028, 0.034, 0.052), 260.0, 7))
+	root.add_child(_layer(Vector2(0.4, 0.6), Color(0.042, 0.05, 0.075), 180.0, 3))
 	return root
 
 

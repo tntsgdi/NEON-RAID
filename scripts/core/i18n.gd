@@ -14,8 +14,8 @@ const STRINGS := {
 	"HUD_SPEED": ["速度 %d", "SPEED %d"],
 	"HUD_FINISH": ["完成  %s", "CLEAR  %s"],
 	"HUD_HINT": [
-		"A/D 移动   空格/W 跳（贴墙按住朝墙连按=爬墙）   Shift 冲刺   S/Ctrl 滑铲   右键 挥刀   R 重来   F1 调参   F2 English   F3 像素/高清",
-		"A/D MOVE   SPACE/W JUMP (hold toward wall + tap = climb)   SHIFT DASH   S/CTRL SLIDE   RMB SLASH   R RESTART   F1 TUNING   F2 中文   F3 PIXEL/HD",
+		"A/D 移动   空格 跳（贴墙按住朝墙连按 = 爬墙）   Shift 冲刺   C 滑铲   右键 挥刀（按住 W 上挑 / 空中按住 S 下劈）   R 重来   F1 调参   F2 English   F3 像素/高清",
+		"A/D MOVE   SPACE JUMP (hold toward wall + tap = climb)   SHIFT DASH   C SLIDE   RMB SLASH (hold W up / S down in air)   R RESTART   F1 TUNING   F2 中文   F3 PIXEL/HD",
 	],
 	"HUD_MODE_HD": ["高清渲染", "HD render"],
 	"HUD_MODE_PIXEL": ["像素渲染 640×360", "Pixel render 640x360"],

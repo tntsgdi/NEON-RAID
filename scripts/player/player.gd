@@ -16,8 +16,6 @@ const STATE_NAMES := ["ground", "air", "dash", "slide", "wall"]
 const CHEST := Vector2(0, -26)
 const STAND := Vector2(12, 36)
 const LOW := Vector2(12, 16)
-const ASSIST_RANGE := 64.0
-const ASSIST_ANGLE := 45.0
 
 var input: PlayerInput = DeviceInput.new()
 var state := State.AIR
@@ -192,6 +190,11 @@ func _wall(delta: float, T: Dictionary) -> void:
 		return
 	velocity.x = _wall_dir * 30.0
 	_gravity(delta, T.wall_slide_speed, T)
+	# 贴墙时手上擦出火星，一眼看出"正扒在墙上"
+	_skid_dust -= delta
+	if _skid_dust <= 0.0 and velocity.y > 20.0:
+		_skid_dust = 0.05
+		Fx.dust(fx_parent, global_position + Vector2(_wall_dir * 6, -24), float(-_wall_dir), 2)
 
 
 func _dash(delta: float, T: Dictionary) -> void:
@@ -427,14 +430,14 @@ func _start_slash(step: int, T: Dictionary) -> void:
 	_slash_queued = false
 	_slash_hit_done = false
 	_slash_dash = state == State.DASH
-	_slash_aim = _assist_aim(aim)
+	_slash_aim = _slash_dir()
 	var heavy := step == 2 or _slash_dash
 	trail.heavy = heavy
 	Audio.play("swing_heavy" if heavy else "swing", -5.0)
-	# 出刀前冲：地面朝出刀方向踏一步；空中第一刀稍微滞空
+	# 出刀前冲：横斩在地面朝前踏一步；空中第一刀稍微滞空
 	var lunge: float = T.slash_lunge * (1.5 if step == 2 else 1.0)
-	var sx := signf(_slash_aim.x) if absf(_slash_aim.x) > 0.2 else float(facing)
-	if state == State.GROUND:
+	var sx := float(facing)
+	if state == State.GROUND and _slash_aim.y == 0.0:
 		if signf(velocity.x) == sx:
 			velocity.x = sx * maxf(absf(velocity.x), lunge)
 		else:
@@ -446,29 +449,21 @@ func _start_slash(step: int, T: Dictionary) -> void:
 			velocity.y = minf(velocity.y, 10.0)
 
 
-## 挥刀吸附：瞄准方向左右 45° 内、够得着的敌人里最近的那个
-func _assist_aim(a: Vector2) -> Vector2:
-	var origin := global_position + CHEST
-	var best := a
-	var best_d := INF
-	for n in get_tree().get_nodes_in_group("hittable"):
-		if n.has_method("alive") and not n.alive():
-			continue
-		var to: Vector2 = n.hurt_rect().get_center() - origin
-		var d := to.length()
-		if d > ASSIST_RANGE or absf(a.angle_to(to)) > deg_to_rad(ASSIST_ANGLE):
-			continue
-		if d < best_d:
-			best_d = d
-			best = to.normalized()
-	return best
+## 挥刀方向：固定朝面朝方向；按住上 = 上挑，空中按住下 = 下劈（不看鼠标）
+func _slash_dir() -> Vector2:
+	if input.move.y < -0.5:
+		return Vector2.UP
+	if input.move.y > 0.5 and state != State.GROUND and state != State.SLIDE:
+		return Vector2.DOWN
+	return Vector2(facing, 0)
 
 
 func _do_hit(T: Dictionary) -> void:
 	_slash_hit_done = true
 	var heavy := slash_step == 2 or _slash_dash
 	var reach := 20.0 + (6.0 if slash_step == 2 else 0.0) + (8.0 if _slash_dash else 0.0)
-	var origin := global_position + CHEST
+	# 下劈从腰部出刀，打得到脚下的敌人
+	var origin := global_position + (Vector2(0, -10) if _slash_aim == Vector2.DOWN else CHEST)
 	var center := origin + _slash_aim * 14.0
 	var hit_any := false
 	for n in get_tree().get_nodes_in_group("hittable"):
@@ -486,6 +481,11 @@ func _do_hit(T: Dictionary) -> void:
 	SlashFx.spawn(fx_parent, origin, base + s.from, base + s.to, facing, 14.0 + reach, heavy)
 	if hit_any:
 		Audio.play("hit_heavy" if heavy else "hit", -2.0)
+		# 下劈打中：像踩弹一样弹起来，并恢复空中冲刺
+		if _slash_aim == Vector2.DOWN and state != State.GROUND:
+			velocity.y = -T.jump_velocity * 0.85
+			_air_dashes = int(T.air_dashes)
+			_set_state(State.AIR)
 		impact.emit(6.0 if heavy else 3.5)
 		var stop: float = T.hit_stop * (1.7 if heavy else 1.0)
 		if stop > 0.0:
@@ -504,13 +504,12 @@ func _update_facing() -> void:
 	if state == State.WALL:
 		facing = -_wall_dir
 		return
-	if state == State.DASH or state == State.SLIDE or _wall_lock > 0.0 or _skidding():
+	# 挥刀期间锁朝向：刀不会挥到一半转身
+	if state == State.DASH or state == State.SLIDE or _wall_lock > 0.0 or _skidding() or slash_step >= 0:
 		return
 	var d := _dir_x()
 	if d != 0:
 		facing = d
-	elif state == State.GROUND and absf(velocity.x) < 20.0 and absf(aim.x) > 0.2:
-		facing = int(signf(aim.x))
 
 
 func _animate(delta: float, T: Dictionary) -> void:

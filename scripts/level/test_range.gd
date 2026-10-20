@@ -35,8 +35,11 @@ const START := Vector2(60, 0)
 const FINISH_X := 2950.0
 const PIT_Y := 220.0
 
-const FILL := Color(0.1, 0.12, 0.16)
-const TOP := Color(0.3, 0.36, 0.46)
+## 实体要和背景一眼分开：更亮的填充 + 四边描边；可以蹬的墙面上有横向抓痕
+const FILL := Color(0.19, 0.23, 0.3)
+const EDGE := Color(0.46, 0.56, 0.7)
+const TOP := Color(0.75, 0.84, 0.95)
+const GRIP := Color(0.36, 0.44, 0.56)
 const MARK := Color(0.25, 0.85, 0.95, 0.22)
 
 var dummies: Array[TargetDummy] = []
@@ -86,7 +89,14 @@ func _draw() -> void:
 			y += 12.0
 	for r in SOLIDS:
 		draw_rect(r, FILL)
-		draw_line(r.position + Vector2(0, 0.5), Vector2(r.end.x, r.position.y + 0.5), TOP, 1.0)
+		draw_rect(r, EDGE, false, 1.0)
+		draw_line(r.position + Vector2(0, 0.5), Vector2(r.end.x, r.position.y + 0.5), TOP, 2.0)
+		if r.size.y > 60.0:
+			var y: float = r.position.y + 10.0
+			while y < minf(r.end.y, 0.0) - 6.0:
+				draw_line(Vector2(r.position.x, y), Vector2(r.position.x + 5, y), GRIP, 1.0)
+				draw_line(Vector2(r.end.x - 5, y), Vector2(r.end.x, y), GRIP, 1.0)
+				y += 14.0
 	# 终点线：青色斜纹
 	for i in 12:
 		var c := Color(0.25, 0.9, 1.0, 0.8) if i % 2 == 0 else Color(0.05, 0.25, 0.3, 0.8)
