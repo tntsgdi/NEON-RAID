@@ -9,10 +9,19 @@ var _t := 0.0
 var _pos := Vector2.ZERO
 var _size := Vector2(20, 30)
 var _shown := 0.0
+var _deny := 0.0
+## 夺壳范围圈的圆心（当前机体），失败时显示
+var origin_node: Node2D
+
+
+## 按 E 但没有能夺的目标：准星抖一下，画出 220 像素的夺壳范围
+func deny() -> void:
+	_deny = 0.5
 
 
 func _process(delta: float) -> void:
 	_t += delta
+	_deny = maxf(_deny - delta, 0.0)
 	if is_instance_valid(target):
 		var r: Rect2 = target.hurt_rect()
 		# 准星从上一个目标滑过去，而不是瞬间跳过去
@@ -25,17 +34,32 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	if _deny > 0.0 and is_instance_valid(origin_node):
+		var c := origin_node.global_position + Vector2(0, -18)
+		var a := _deny / 0.5
+		var seg := 48
+		for i in seg:
+			if i % 2 == 0:
+				var a0 := TAU * i / seg
+				draw_arc(c, Consciousness.POSSESS_RANGE, a0, a0 + TAU / seg, 3, Color(1.6, 1.7, 1.8, 0.5 * a), 1.0, true)
 	if _shown <= 0.0:
 		return
 	var col := Color(2.0, 2.1, 2.2, _shown) if in_range else Color(0.6, 0.65, 0.7, 0.6 * _shown)
 	var pulse := 1.0 + (0.08 * sin(_t * 10.0) if in_range else 0.0)
 	var h := _size * 0.5 * pulse
+	var p := _pos
+	if _deny > 0.0:
+		p += Vector2(sin(_t * 90.0) * 3.0 * (_deny / 0.5), 0)  # 夺不了：准星抖一下
 	var arm := 5.0
 	for sx in [-1.0, 1.0]:
 		for sy in [-1.0, 1.0]:
-			var c := _pos + Vector2(h.x * sx, h.y * sy)
+			var c := p + Vector2(h.x * sx, h.y * sy)
 			draw_line(c, c - Vector2(arm * sx, 0), col, 1.5, true)
 			draw_line(c, c - Vector2(0, arm * sy), col, 1.5, true)
 	if in_range:
+		# 键帽："E"
 		var font := ThemeDB.fallback_font
-		draw_string(font, _pos + Vector2(h.x + 3, -h.y + 4), "E", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, col)
+		var kp := p + Vector2(h.x + 4, -h.y - 2)
+		draw_rect(Rect2(kp, Vector2(12, 13)), Color(0.02, 0.03, 0.05, 0.8 * _shown))
+		draw_rect(Rect2(kp, Vector2(12, 13)), col, false, 1.0)
+		draw_string(font, kp + Vector2(2.5, 11), "E", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)

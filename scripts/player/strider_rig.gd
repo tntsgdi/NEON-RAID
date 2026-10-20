@@ -220,6 +220,8 @@ func update(m: Dictionary, delta: float) -> void:
 	var eye: Color = CYAN.lerp(Color.WHITE, g) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
 	_shapes.append(["poly", visor, eye, CYAN if m.glow >= 0.0 else EDGE_BACK])
 	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 1.8 + g, eye])
+	if state == "kneel":
+		_shapes.append(["ring", pelvis + Vector2(0, -4), 20.0 + 3.0 * sin(m.time * 3.0), Color(0.4, 1.4, 1.7, 0.35 + 0.2 * sin(m.time * 3.0))])
 	_shapes.append(["line", mount, barrel_end, 3.5, Color(0.35, 0.4, 0.48)])
 	_shapes.append(["line", mount, barrel_end, 1.0, EDGE])
 	_shapes.append(["dot", mount, 2.5, FILL])
@@ -423,6 +425,8 @@ static func draw_shapes(ci: CanvasItem, shapes: Array) -> void:
 				ci.draw_polyline(s[1], s[2], 1.0, true)
 			"dot":
 				ci.draw_circle(s[1], s[2], s[3])
+			"ring":
+				ci.draw_arc(s[1], s[2], 0.0, TAU, 32, s[3], 1.5, true)
 			"cable":
 				var pts: Array = s[1]
 				for i in range(1, pts.size()):

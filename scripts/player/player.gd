@@ -735,7 +735,7 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	parked = false
 	input = inp
 	velocity = vel
-	_iframes = maxf(_iframes, 0.4)
+	_iframes = maxf(_iframes, 0.25)
 	remove_from_group("possessable")
 	add_to_group("controlled")
 

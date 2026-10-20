@@ -189,7 +189,7 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	input = inp
 	velocity = vel
 	hp = MAX_HP
-	_iframes = 0.4
+	_iframes = 0.25
 	remove_from_group("enemy")
 	remove_from_group("hittable")
 	remove_from_group("possessable")

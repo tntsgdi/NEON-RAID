@@ -11,7 +11,7 @@ const KEYS := {
 	"run": [KEY_SHIFT],
 	"slash_key": [KEY_J],
 	"shoot_key": [KEY_K],
-	"possess": [KEY_E],
+	"possess": [KEY_E, KEY_U],
 	"slide": [KEY_C],
 	"restart": [KEY_R],
 	"tuning": [KEY_F1],

@@ -338,7 +338,7 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	controlled = true
 	input = inp
 	velocity = vel
-	_iframes = 0.4
+	_iframes = 0.25
 	_flash = 0.0
 	state = State.PATROL
 	remove_from_group("enemy")

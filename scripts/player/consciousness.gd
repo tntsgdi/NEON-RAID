@@ -53,9 +53,14 @@ func _physics_process(_delta: float) -> void:
 		current.lock_target = lock
 	reticle.target = lock
 	reticle.in_range = lock_in_range
-	if input.possess_pressed and lock_in_range:
-		possess(lock)
-		return
+	reticle.origin_node = current
+	if input.possess_pressed:
+		var t := _possess_target()
+		if t != null:
+			possess(t)
+			return
+		reticle.deny()
+		Audio.play("shield_block", -14.0, 1.6)
 	# 光球碰到任意机体就直接投射进去
 	if current is Wisp:
 		for n in get_tree().get_nodes_in_group("possessable"):
@@ -88,12 +93,14 @@ func _update_lock() -> void:
 			seen[n] = true
 			var to: Vector2 = n.center() - origin
 			var d := to.length()
-			if d > LOCK_RANGE:
+			if d > LOCK_RANGE or not _visible(origin, n):
 				continue
 			var ang := absf(dir.angle_to(to)) if d > 1.0 else 0.0
 			if ang > cone and d > 40.0:
 				continue
 			var score := d * (1.0 + 1.5 * ang)
+			if n.is_in_group("possessable"):
+				score *= 0.7  # 可夺的目标优先挂准星
 			if n == lock:
 				prev_score = score
 			if score < best_score:
@@ -106,6 +113,36 @@ func _update_lock() -> void:
 	lock_in_range = lock != null and lock.is_in_group("possessable") and lock.center().distance_to(origin) <= POSSESS_RANGE
 
 
+## 墙后面的不锁定、不能夺
+func _visible(origin: Vector2, n: Node2D) -> bool:
+	var q := PhysicsRayQueryParameters2D.create(origin, n.center(), 1)
+	return world.get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+
+
+## 按 E 时要夺的目标：准星目标可夺就是它；否则在可夺的里面另找一个（距离内、看得见、离瞄准方向近）
+func _possess_target() -> Node2D:
+	if lock_in_range:
+		return lock
+	var origin: Vector2 = current.global_position + Vector2(0, -18)
+	var dir := _aim_dir()
+	var best: Node2D = null
+	var best_score := INF
+	for n in get_tree().get_nodes_in_group("possessable"):
+		if n == current or not n.alive():
+			continue
+		var to: Vector2 = n.center() - origin
+		if to.length() > POSSESS_RANGE or not _visible(origin, n):
+			continue
+		var ang := absf(dir.angle_to(to)) if not (current is Wisp) else 0.0
+		if ang > deg_to_rad(80.0):
+			continue
+		var score := to.length() * (1.0 + 1.5 * ang)
+		if score < best_score:
+			best_score = score
+			best = n
+	return best
+
+
 func possess(target: Node2D) -> void:
 	if not is_instance_valid(target) or target == current:
 		return
@@ -116,7 +153,8 @@ func possess(target: Node2D) -> void:
 	Fx.flash(world, target.center(), Neon.WHITE_HOT, 16.0)
 	Fx.ring(world, target.center(), 22.0)
 	Audio.play("possess", -2.0)
-	TimeFx.hitstop(0.05)
+	TimeFx.hitstop(0.07)
+	get_tree().call_group("game", "shockwave", target.center())
 	_detach(old)
 	old.release_control()
 	target.take_control(input, vel)
