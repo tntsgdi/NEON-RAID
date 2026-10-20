@@ -633,7 +633,8 @@ func _physics_process(delta: float) -> void:
 	var body := _body()
 	var bvel: Vector2 = body.velocity if "velocity" in body else Vector2.ZERO
 	_look = lerpf(_look, clampf(bvel.x * T.camera_look_ahead, -170.0, 170.0), 1.0 - exp(-5.0 * delta))
-	var target := body.global_position + Vector2(_look, -56.0)
+	# 镜头偏上：地面线落在画面约 75% 高度，少看一点空荡的地块
+	var target := body.global_position + Vector2(_look, -86.0)
 	if is_instance_valid(controller.flow) and not controller.flow.done:
 		target = controller.flow.global_position + Vector2(0, -22.0)
 	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-12.0 * delta))

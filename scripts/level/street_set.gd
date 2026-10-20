@@ -268,11 +268,7 @@ class ForegroundStrip extends Node2D:
 		var dark := Color(0.012, 0.014, 0.02)
 		var edge := Color(0.05, 0.06, 0.08)
 		# 两根钢柱（900 像素一个循环）
-		for x in [420.0]:
-			draw_rect(Rect2(x, -400, 7, 520), dark)
-			draw_rect(Rect2(x, -400, 1, 520), edge)
-			for y in range(-380, 100, 30):
-				draw_rect(Rect2(x - 1, y, 9, 2), dark)
+		# （通天的前景立柱去掉了：没有细节的纯黑竖条看起来像渲染故障；只保留下垂电缆）
 		# 下垂电缆：一像素宽的弧
 		for seg in [[0.0, 300.0, -260.0, 40.0], [430.0, 900.0, -250.0, 55.0]]:
 			var x0: float = seg[0]
