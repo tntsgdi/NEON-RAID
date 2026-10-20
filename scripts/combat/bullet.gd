@@ -5,8 +5,8 @@ extends Node2D
 
 enum Team { PLAYER, ENEMY }
 
-const PLAYER_COLOR := Color(0.4, 1.0, 1.0)
-const ENEMY_COLOR := Color(1.0, 0.25, 0.3)
+const PLAYER_COLOR := Color(0.6, 2.2, 2.6)
+const ENEMY_COLOR := Color(2.8, 0.4, 0.5)
 
 var team := Team.PLAYER
 var velocity := Vector2.ZERO
@@ -15,6 +15,7 @@ var shooter: Node
 var deflected := false
 var life := 2.0
 var fx_parent: Node
+var _light: PointLight2D
 
 
 static func fire(parent: Node, pos: Vector2, vel: Vector2, t: Team, dmg: int, from: Node) -> Bullet:
@@ -32,6 +33,8 @@ static func fire(parent: Node, pos: Vector2, vel: Vector2, t: Team, dmg: int, fr
 
 func _ready() -> void:
 	add_to_group("enemy_bullets" if team == Team.ENEMY else "player_bullets")
+	light_mask = Neon.ACTOR_LIGHT_MASK
+	_light = Neon.add_light(self, Neon.RED if team == Team.ENEMY else Neon.CYAN, 0.5, 0.45)
 
 
 func color() -> Color:
@@ -54,6 +57,7 @@ func deflect(by: Node) -> void:
 	damage = 99
 	life = 2.0
 	shooter = by
+	_light.color = Neon.CYAN
 	queue_redraw()
 
 
@@ -118,4 +122,4 @@ func _draw() -> void:
 	var c := color()
 	draw_line(-dir * length, Vector2.ZERO, Color(c, 0.35), 4.0, true)
 	draw_line(-dir * length * 0.6, Vector2.ZERO, c, 2.0, true)
-	draw_circle(Vector2.ZERO, 2.0 if team == Team.PLAYER else 2.5, Color(1, 1, 1))
+	draw_circle(Vector2.ZERO, 2.0 if team == Team.PLAYER else 2.5, Neon.WHITE_HOT)

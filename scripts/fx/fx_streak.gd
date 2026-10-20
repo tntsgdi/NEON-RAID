@@ -16,4 +16,4 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var k := 1.0 - _t / 0.16
-	draw_line(Vector2.ZERO, Vector2(-length * k, 0), Color(0.55, 0.95, 1.0, 0.45 * k), 1.0, true)
+	draw_line(Vector2.ZERO, Vector2(-length * k, 0), Color(0.7, 1.5, 1.8, 0.4 * k), 1.0, true)

@@ -18,7 +18,7 @@ static func dust(parent: Node, pos: Vector2, dir_x: float, amount: int) -> void:
 
 
 ## 命中火花：沿 dir 方向喷出的亮线
-static func sparks(parent: Node, pos: Vector2, dir: Vector2, amount: int, color := Color(0.85, 1.0, 1.0)) -> void:
+static func sparks(parent: Node, pos: Vector2, dir: Vector2, amount: int, color := Color(1.4, 2.4, 2.6)) -> void:
 	if parent == null:
 		return
 	var p := _burst(parent, pos, amount, 0.22)
@@ -55,6 +55,18 @@ static func debris(parent: Node, pos: Vector2, dir: Vector2, amount: int, color:
 	p.color = color
 	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	p.emission_rect_extents = Vector2(6, 12)
+
+
+## 闪光：一个迅速缩小的高亮光点（枪口火光、命中闪光）
+static func flash(parent: Node, pos: Vector2, color: Color, radius: float) -> void:
+	if parent == null:
+		return
+	var f := FxFlash.new()
+	f.position = pos
+	f.color = color
+	f.radius = radius
+	f.z_index = 8
+	parent.add_child(f)
 
 
 ## 冲击环：一圈迅速扩大、变淡的亮环

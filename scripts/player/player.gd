@@ -90,6 +90,7 @@ func _ready() -> void:
 	add_child(_shape)
 	_set_low(false)
 	rig = StriderRig.new()
+	rig.light_mask = Neon.ACTOR_LIGHT_MASK
 	add_child(rig)
 	if fx_parent == null:
 		fx_parent = get_parent()
@@ -514,6 +515,7 @@ func _do_hit(T: Dictionary) -> void:
 			var power := (2 if heavy else 1) * (2 if overclock_charge > 0.0 else 1)
 			n.take_hit(_slash_aim, power, "slash")
 			Fx.sparks(fx_parent, closest, _slash_aim, 14 if heavy else 9)
+			Fx.flash(fx_parent, closest, Neon.WHITE_HOT, 10.0 if heavy else 7.0)
 			slash_hit.emit(n)
 			hit_any = true
 	var s: Dictionary = StriderRig.SLASH[slash_step]
@@ -547,6 +549,7 @@ func _try_deflect(T: Dictionary) -> void:
 			Fx.sparks(fx_parent, b.global_position, -b.velocity.normalized(), 12, Color(1, 1, 1))
 			Audio.play("deflect", -2.0)
 			Music.duck(6.0, 0.3)
+			get_tree().call_group("game", "shockwave", b.global_position)
 			impact.emit(4.0, _slash_aim)
 			TimeFx.hitstop(T.hit_stop * 1.5)
 			_overclock(T)
@@ -571,6 +574,7 @@ func _update_gun(delta: float, T: Dictionary) -> void:
 	overclock_charge = 0.0
 	Bullet.fire(fx_parent, muzzle, aim * T.bullet_speed, Bullet.Team.PLAYER, dmg, self)
 	Fx.sparks(fx_parent, muzzle, aim, 5, Bullet.PLAYER_COLOR)
+	Fx.flash(fx_parent, muzzle, Neon.CYAN_HOT, 7.0)
 	Audio.play("shot", -3.0)
 	rig.kick()
 	if state == State.GROUND:
@@ -634,7 +638,7 @@ func hurt(dir: Vector2, dmg: int) -> void:
 		_set_low(false)
 	velocity = Vector2((signf(dir.x) if absf(dir.x) > 0.1 else -facing) * 220.0, -200.0)
 	_set_state(State.AIR)
-	Fx.sparks(fx_parent, global_position + CHEST, dir, 10, Color(1, 0.4, 0.4))
+	Fx.sparks(fx_parent, global_position + CHEST, dir, 10, Neon.RED_HOT)
 	Audio.play("hurt", -3.0)
 	Music.duck(8.0, 0.4)
 	impact.emit(5.0, dir)
@@ -672,7 +676,8 @@ func _update_facing() -> void:
 
 func _animate(delta: float, T: Dictionary) -> void:
 	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
-	rig.scale = Vector2(facing * _squash.x, _squash.y)
+	var t: float = rig.turn
+	rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.12) * _squash.x, _squash.y)
 	var ratio: float = absf(velocity.x) / T.run_speed
 	var mode := "idle"
 	match state:

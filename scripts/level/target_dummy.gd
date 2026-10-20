@@ -61,6 +61,7 @@ func _break(dir: Vector2) -> void:
 	Fx.debris(fx_parent, center(), dir, 10, Color(0.3, 0.33, 0.4))
 	Fx.sparks(fx_parent, center(), dir, 14, Color(1.0, 0.6, 0.5))
 	Audio.play("break", -3.0)
+	get_tree().call_group("game", "shockwave", center())
 	broken.emit(center())
 
 
@@ -100,7 +101,7 @@ func _draw() -> void:
 	var head := Rect2(-5, -SIZE.y - 10, 10, 8)
 	draw_rect(head, Color.WHITE if white else Color(0.22, 0.06, 0.09))
 	draw_rect(head, RED, false, 1.5)
-	draw_rect(Rect2(-3, -SIZE.y - 7, 6, 2), Color.WHITE if white else RED)
+	draw_rect(Rect2(-3, -SIZE.y - 7, 6, 2), Neon.WHITE_HOT if white else Neon.RED_HOT)
 	# HP 刻度
 	for i in MAX_HP:
 		var c := RED if i < hp else Color(0.3, 0.1, 0.12)

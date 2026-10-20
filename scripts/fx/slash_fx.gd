@@ -54,4 +54,4 @@ func _draw() -> void:
 		pts.append(Vector2.from_angle(lerpf(a0, a1, float(i) / n)) * inner)
 	var col := Color(0.45, 0.95, 1.0, 0.3 * k) if not heavy else Color(0.75, 1.0, 1.0, 0.45 * k)
 	draw_colored_polygon(pts, col)
-	draw_polyline(outer, Color(1, 1, 1, k), 2.0 if heavy else 1.5, true)
+	draw_polyline(outer, Color(1.8, 2.6, 2.8, k), 2.0 if heavy else 1.5, true)

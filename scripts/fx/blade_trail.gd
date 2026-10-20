@@ -35,7 +35,7 @@ func _draw() -> void:
 		var mid_a: Vector2 = a[0].lerp(a[1], 0.75)
 		var mid_b: Vector2 = b[0].lerp(b[1], 0.75)
 		_quad(mid_a, a[1], b[1], mid_b, core)
-		draw_line(a[1], b[1], Color(1, 1, 1, k), 1.5, true)
+		draw_line(a[1], b[1], Color(1.6, 2.6, 2.8, k), 1.5, true)
 
 
 ## 直接按两个三角形画，刀光扫过时四边形可能自相交，不能走多边形三角剖分

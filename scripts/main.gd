@@ -26,10 +26,17 @@ var _pixel_layer: CanvasLayer
 var _viewport: SubViewport
 var _tint: ColorRect
 var _tips := {}
+var _post: ShaderMaterial
+var _ca := 0.0
+var _shock_t := 1.0
+var _rain: CPUParticles2D
+var _foreground: Node2D
 
 
 func _ready() -> void:
+	add_to_group("game")
 	var theme := _make_theme()
+	_setup_glow()
 
 	# 像素模式用的 640×360 视口（默认隐藏）
 	_pixel_layer = CanvasLayer.new()
@@ -47,6 +54,7 @@ func _ready() -> void:
 	_viewport.snap_2d_vertices_to_pixel = true
 	_viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_viewport.use_hdr_2d = true
 	box.add_child(_viewport)
 
 	world = Node2D.new()
@@ -58,10 +66,26 @@ func _ready() -> void:
 	player.impact.connect(_on_impact)
 	player.died.connect(_on_player_died, CONNECT_DEFERRED)
 	world.add_child(player)
-	world.add_child(CityBackdrop.make_foreground())
+	_rain = _make_rain()
+	world.add_child(_rain)
+	_foreground = CityBackdrop.make_foreground()
+	world.add_child(_foreground)
+	Neon.add_light(player, Neon.CYAN, 0.35, 2.0, Vector2(0, -18))
 	camera = Camera2D.new()
 	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	world.add_child(camera)
+
+	# 屏幕后处理（色差、冲击波、暗角）：在世界之上、界面之下
+	var post_layer := CanvasLayer.new()
+	post_layer.layer = 5
+	add_child(post_layer)
+	var post_rect := ColorRect.new()
+	post_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	post_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_post = ShaderMaterial.new()
+	_post.shader = load("res://shaders/post.gdshader")
+	post_rect.material = _post
+	post_layer.add_child(post_rect)
 
 	var ui_layer := CanvasLayer.new()
 	ui_layer.layer = 10
@@ -83,6 +107,61 @@ func _ready() -> void:
 	tuning_panel.visible = false
 	ui.add_child(tuning_panel)
 	load_level("range")
+
+
+## HDR 辉光：只有超过 1.0 的颜色（Neon.*_HOT / *_GLOW）会发光，霓虹真正亮起来
+func _setup_glow() -> void:
+	var env := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_CANVAS
+	e.glow_enabled = true
+	e.glow_intensity = 0.55
+	e.glow_strength = 1.0
+	e.glow_bloom = 0.0
+	e.glow_hdr_threshold = 1.0
+	e.glow_hdr_scale = 2.0
+	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	for lv in 7:
+		e.set_glow_level(lv, lv in [1, 2, 3, 4])
+	env.environment = e
+	add_child(env)
+
+
+## 雨：落在机体身后，跟着镜头走（粒子留在世界坐标里）
+func _make_rain() -> CPUParticles2D:
+	var r := CPUParticles2D.new()
+	r.amount = 220
+	r.lifetime = 0.7
+	r.texture = Neon.streak_texture()
+	r.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	r.emission_rect_extents = Vector2(420, 10)
+	r.direction = Vector2(-0.18, 1.0)
+	r.spread = 2.0
+	r.gravity = Vector2.ZERO
+	r.initial_velocity_min = 700.0
+	r.initial_velocity_max = 900.0
+	r.particle_flag_align_y = true
+	r.scale_amount_min = 0.6
+	r.scale_amount_max = 1.2
+	r.color = Color(0.55, 0.85, 1.0, 0.22)
+	r.local_coords = false
+	r.z_index = -5
+	return r
+
+
+## 冲击波（招架、弹反、打碎时）：world_pos 是世界坐标
+func shockwave(world_pos: Vector2) -> void:
+	var screen := (camera.get_canvas_transform() * world_pos) if not pixel_mode else (_viewport.canvas_transform * world_pos)
+	var size := Vector2(get_viewport().get_visible_rect().size)
+	if pixel_mode:
+		size = Vector2(640, 360)
+	_post.set_shader_parameter("shock_center", screen / size)
+	_shock_t = 0.0
+
+
+## 色差脉冲（重击、受伤、神经超频）
+func aberrate(amount: float) -> void:
+	_ca = maxf(_ca, amount)
 
 
 func _make_theme() -> Theme:
@@ -180,6 +259,8 @@ func _tip(key: String) -> void:
 
 func _on_impact(strength: float, dir: Vector2) -> void:
 	var s: float = strength * Tuning.v.shake
+	if strength >= 5.0:
+		aberrate(strength * 0.9)
 	if dir == Vector2.ZERO:
 		_shake = maxf(_shake, s)
 	else:
@@ -231,6 +312,17 @@ func _process(delta: float) -> void:
 	else:
 		Music.intensity = 0.35 if absf(player.velocity.x) > Tuning.v.run_speed * 0.9 else 0.0
 	_update_tips()
+	# 后处理：色差和冲击波按真实时间衰减
+	var real := delta / maxf(Engine.time_scale, 0.0001)
+	_ca = move_toward(_ca, 2.5 if TimeFx.slowmo_active() else 0.0, real * 30.0)
+	_shock_t = minf(_shock_t + real * 2.2, 1.0)
+	_post.set_shader_parameter("ca", _ca)
+	_post.set_shader_parameter("shock_t", _shock_t)
+	var vp := get_viewport().get_visible_rect().size
+	_post.set_shader_parameter("aspect", vp.x / maxf(vp.y, 1.0))
+	# 前景灯柱只在高速时淡入，平时不挡视线
+	var spd := clampf((absf(player.velocity.x) / Tuning.v.run_speed - 0.6) / 0.5, 0.0, 1.0)
+	_foreground.modulate.a = lerpf(_foreground.modulate.a, spd, 1.0 - exp(-4.0 * real))
 	var slow := TimeFx.slowmo_active()
 	_tint.color.a = lerpf(_tint.color.a, 0.14 if slow else 0.0, 1.0 - exp(-20.0 * delta / maxf(Engine.time_scale, 0.05)))
 	hud.refresh(level.label(x), run_time, best, player.velocity.length(), finished,
@@ -255,3 +347,4 @@ func _physics_process(delta: float) -> void:
 		jitter = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
 		_shake = move_toward(_shake, 0.0, 45.0 * delta)
 	camera.offset = jitter + _kick
+	_rain.global_position = camera.global_position + Vector2(60, -230)

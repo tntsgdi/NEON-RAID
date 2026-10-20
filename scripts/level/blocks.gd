@@ -5,7 +5,7 @@ const FILL := Color(0.19, 0.23, 0.3)
 const EDGE := Color(0.46, 0.56, 0.7)
 const TOP := Color(0.75, 0.84, 0.95)
 const GRIP := Color(0.36, 0.44, 0.56)
-const TICK := Color(0.3, 0.9, 1.0, 0.35)
+const TICK := Color(0.4, 1.3, 1.6, 0.4)
 
 
 static func build(parent: Node, rects: Array) -> void:

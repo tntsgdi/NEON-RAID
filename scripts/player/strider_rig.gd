@@ -8,12 +8,13 @@ extends Node2D
 ##   线缆——背后两条发光线缆按弹簧物理被风往后拉
 ## 原点在脚底，按面朝右画；面朝左时 scale.x = -1。
 
-const CYAN := Color(0.3, 1.0, 1.0)
-const EDGE := Color(0.25, 0.8, 0.9)
+const CYAN := Neon.CYAN_HOT
+## 外壳描边带一点点霓虹发光
+const EDGE := Color(0.3, 1.1, 1.25)
 const EDGE_BACK := Color(0.13, 0.42, 0.5)
 const FILL := Color(0.15, 0.18, 0.24)
 const FILL_BACK := Color(0.09, 0.11, 0.15)
-const BLADE := Color(0.85, 1.0, 1.0)
+const BLADE := Color(1.05, 1.9, 2.1)
 
 const HIP_H := 21.0
 const THIGH := 13.0
@@ -53,6 +54,9 @@ var _cables: Array = []      # 每条线缆：[当前点数组, 上一帧点数�
 var _shapes: Array = []      # 本帧要画的图形，残影直接复制它
 var _blade_pts := [Vector2.ZERO, Vector2.ZERO]
 var _muzzle := Vector2.ZERO
+## 转身：从 ±1 平滑过渡（中途压扁成一条，再翻过来），而不是瞬间翻面
+var turn := 1.0
+var _prev_blade := 150.0
 
 
 func _ready() -> void:
@@ -68,6 +72,7 @@ func update(m: Dictionary, delta: float) -> void:
 	if m.facing != _facing:
 		_mirror_cables()
 		_facing = m.facing
+	turn = move_toward(turn, float(m.facing), delta * 11.0)
 	var state: String = m.state
 	var ratio: float = m.speed_ratio
 
@@ -171,7 +176,16 @@ func update(m: Dictionary, delta: float) -> void:
 	_shapes.append(["dot", mount, 2.5, FILL])
 	_add_leg(legs[0], FILL, EDGE)
 	_shapes.append(["line", shoulder, hand, 3.0, EDGE])
-	_shapes.append(["line", hand, tip, 4.5, Color(0.3, 0.9, 1.0, 0.3)])
+	# 刀残影：挥得越快，前一帧到这一帧之间留下的半透明刀身越多
+	var swing := angle_difference(deg_to_rad(_prev_blade), deg_to_rad(_blade_angle))
+	if absf(swing) > deg_to_rad(6.0):
+		for i in 4:
+			var a := deg_to_rad(_prev_blade) + swing * (float(i) + 0.5) / 4.0
+			var d := Vector2.from_angle(a)
+			var h := shoulder + d * ARM_LEN
+			_shapes.append(["line", h, h + d * BLADE_LEN, 3.0, Color(0.4, 1.5, 1.8, 0.07 + 0.05 * i)])
+	_prev_blade = _blade_angle
+	_shapes.append(["line", hand, tip, 4.0, Color(0.25, 0.9, 1.0, 0.25)])
 	_shapes.append(["line", hand, tip, 2.0, BLADE])
 	_shapes.append(["dot", shoulder, 2.0, EDGE])
 	queue_redraw()
@@ -344,7 +358,7 @@ static func draw_shapes(ci: CanvasItem, shapes: Array) -> void:
 				var pts: Array = s[1]
 				for i in range(1, pts.size()):
 					var k := 1.0 - float(i) / pts.size()
-					ci.draw_line(pts[i - 1], pts[i], Color(0.3, 1.0, 1.0, 0.25 + 0.6 * k), 0.6 + 1.6 * k, true)
+					ci.draw_line(pts[i - 1], pts[i], Color(0.4, 1.6, 1.9, 0.25 + 0.6 * k), 0.6 + 1.6 * k, true)
 
 
 static func lerp_angle_deg(a: float, b: float, t: float) -> float:

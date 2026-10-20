@@ -12,7 +12,8 @@ signal died(bot: EnemyBot)
 
 enum State { PATROL, AIM, COOLDOWN, STAGGER, AIR, WINDUP, CHARGE, DEAD }
 
-const RED := Color(0.95, 0.22, 0.28)
+const RED := Color(1.25, 0.26, 0.32)
+const EYE := Neon.RED_HOT
 const DARK := Color(0.2, 0.05, 0.08)
 const METAL := Color(0.42, 0.38, 0.44)
 const SIZE := Vector2(14, 34)
@@ -42,6 +43,9 @@ var _shield_flash := 0.0
 var _walk_phase := 0.0
 var _spawn_pop := 0.25
 var _hit_player := false
+## 受击后仰（弹簧）
+var _recoil := 0.0
+var _recoil_v := 0.0
 
 
 func _ready() -> void:
@@ -61,6 +65,8 @@ func _ready() -> void:
 		hp = 3
 	if fx_parent == null:
 		fx_parent = get_parent()
+	light_mask = Neon.ACTOR_LIGHT_MASK
+	Neon.add_light(self, Neon.RED, 0.3, 1.0, Vector2(0, -22))
 
 
 func alive() -> bool:
@@ -114,6 +120,7 @@ func take_hit(dir: Vector2, power: int, hit_kind := "slash") -> int:
 	hp -= power
 	_flash = 0.1
 	var sx := signf(dir.x) if absf(dir.x) > 0.1 else float(-facing)
+	_recoil_v += sx * (7.0 + 4.0 * power)
 	velocity.x = sx * (150.0 + 80.0 * power)
 	if dir.y < -0.5:
 		velocity.y = -360.0  # 上挑：打上天
@@ -134,8 +141,9 @@ func _parried(dir: Vector2) -> void:
 	_t = 1.0
 	velocity = Vector2(signf(dir.x) * 260.0, -160.0)
 	_flash = 0.12
-	Fx.sparks(fx_parent, center(), dir, 16, Color.WHITE)
+	Fx.sparks(fx_parent, center(), dir, 16, Neon.WHITE_HOT)
 	Audio.play("deflect", -2.0, 0.85)
+	get_tree().call_group("game", "shockwave", center())
 	if is_instance_valid(player) and player.has_method("parried"):
 		player.parried()
 
@@ -144,10 +152,20 @@ func _die(dir: Vector2) -> void:
 	state = State.DEAD
 	remove_from_group("hittable")
 	remove_from_group("enemy")
-	Fx.debris(fx_parent, center(), dir, 20, RED)
-	Fx.debris(fx_parent, center(), dir, 10, Color(0.3, 0.33, 0.4))
-	Fx.sparks(fx_parent, center(), dir, 16, Color(1.0, 0.6, 0.5))
+	# 碎成零件：头、躯干、两条腿、武器各自带着冲量飞出去、落地弹跳
+	var base := global_position
+	var push := Vector2(signf(dir.x) if absf(dir.x) > 0.1 else -facing, -0.6).normalized()
+	FxPart.spawn(fx_parent, base + Vector2(0, -34), "rect", Vector2(10, 8), push * 260.0 + Vector2(0, -160), DARK, RED)
+	FxPart.spawn(fx_parent, base + Vector2(0, -21), "rect", Vector2(15, 17), push * 160.0, DARK, RED)
+	FxPart.spawn(fx_parent, base + Vector2(-3, -7), "rect", Vector2(3, 12), push * 120.0 + Vector2(-60, -80), RED, RED)
+	FxPart.spawn(fx_parent, base + Vector2(3, -7), "rect", Vector2(3, 12), push * 140.0 + Vector2(60, -90), RED, RED)
+	if kind != "rusher":
+		FxPart.spawn(fx_parent, base + Vector2(facing * 10, -24), "rect", Vector2(10, 3), push * 300.0 + Vector2(0, -120), METAL, METAL)
+	Fx.debris(fx_parent, center(), dir, 12, RED)
+	Fx.sparks(fx_parent, center(), dir, 18, Color(2.6, 1.0, 0.7))
+	Fx.flash(fx_parent, center(), Color(2.8, 0.9, 0.6), 22.0)
 	Audio.play("break", -2.0)
+	get_tree().call_group("game", "shockwave", center())
 	died.emit(self)
 	queue_free()
 
@@ -156,6 +174,8 @@ func _physics_process(delta: float) -> void:
 	_flash = maxf(_flash - delta, 0.0)
 	_shield_flash = maxf(_shield_flash - delta, 0.0)
 	_spawn_pop = maxf(_spawn_pop - delta, 0.0)
+	_recoil_v += (-_recoil * 220.0 - _recoil_v * 14.0) * delta
+	_recoil += _recoil_v * delta
 	velocity.y = minf(velocity.y + GRAVITY * delta, 600.0)
 	match state:
 		State.PATROL:
@@ -283,7 +303,7 @@ func _draw() -> void:
 		var foot := Vector2(side * 3 + step * side, 0)
 		var knee := (hip + foot) * 0.5 + Vector2(facing * 2.5, 0)
 		draw_polyline(PackedVector2Array([hip, knee, foot]), RED.darkened(0.2 if side < 0 else 0.0), 2.5, true)
-	draw_set_transform(Vector2(0, -13), lean, Vector2(s, s))
+	draw_set_transform(Vector2(0, -13), lean + _recoil * 0.06, Vector2(s, s))
 	# 躯干（梯形）与肩甲
 	var body := PackedVector2Array([Vector2(-7, 0), Vector2(7, 0), Vector2(8, -17), Vector2(-8, -17)])
 	draw_colored_polygon(body, fill)
@@ -294,7 +314,7 @@ func _draw() -> void:
 	draw_rect(head, fill)
 	draw_rect(head, RED, false, 1.5)
 	var eye_on := state in [State.AIM, State.WINDUP, State.CHARGE] and int(_t * 20.0) % 2 == 0
-	draw_rect(Rect2(0 if facing > 0 else -5, -23, 5, 2), Color.WHITE if (white or eye_on) else RED)
+	draw_rect(Rect2(0 if facing > 0 else -5, -23, 5, 2), Neon.WHITE_HOT if (white or eye_on) else EYE)
 	# 武器
 	var g := Vector2(facing * 8, -13)
 	if kind == "rusher":
@@ -310,21 +330,21 @@ func _draw() -> void:
 		# 开火前枪口越来越亮
 		if state == State.AIM:
 			var k := 1.0 - _t / aim_time()
-			draw_circle(g + dir * 10.0, 1.0 + 2.5 * k, Color(1, 0.3 + 0.7 * k, 0.3 + 0.7 * k, 0.4 + 0.6 * k))
+			draw_circle(g + dir * 10.0, 1.0 + 2.5 * k, Color(2.5 + k, 0.4 + 1.6 * k, 0.4 + 1.6 * k, 0.4 + 0.6 * k))
 	draw_set_transform(Vector2.ZERO)
 	# 瞄准线：越接近开火越亮越粗，锁定后变白
 	if state == State.AIM:
 		var gp := gun_pos() - global_position
 		var k := 1.0 - _t / aim_time()
 		var locked := _t <= LOCK_TIME
-		var c := Color(1, 1, 1, 0.9) if locked else Color(1, 0.2, 0.25, 0.25 + 0.5 * k)
+		var c := Color(1.3, 1.25, 1.25, 0.8) if locked else Color(1.2, 0.2, 0.25, 0.2 + 0.45 * k)
 		var spreads := [-12.0, 0.0, 12.0] if kind == "burst" else [0.0]
 		for a in spreads:
 			draw_line(gp, gp + aim_dir.rotated(deg_to_rad(a)) * 320.0, c, 1.0 + k * 1.5)
 	# 冲锋蓄力：地面上一道红色预警
 	if state == State.WINDUP:
 		var k := 1.0 - _t / 0.4
-		draw_rect(Rect2(minf(0.0, facing * 200.0), -2, 200, 2), Color(1, 0.2, 0.25, 0.2 + 0.5 * k))
+		draw_rect(Rect2(minf(0.0, facing * 200.0), -2, 200, 2), Color(2.0, 0.3, 0.35, 0.2 + 0.5 * k))
 	# 能量盾
 	if has_shield():
 		var sx := facing * 12.0
