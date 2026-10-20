@@ -63,6 +63,9 @@ var _ram_t := 0.0
 var _ram_hit := {}
 var _gun_hot := 0.0
 var rig: EnemyRig
+var hurtboxes: Hurtboxes
+## 被踩趴的剩余时间
+var _down := 0.0
 
 
 func _ready() -> void:
@@ -87,6 +90,8 @@ func _ready() -> void:
 	rig.kind = kind
 	rig.light_mask = Neon.ACTOR_LIGHT_MASK
 	add_child(rig)
+	hurtboxes = Hurtboxes.new()
+	add_child(hurtboxes)
 	light_mask = Neon.ACTOR_LIGHT_MASK
 	Neon.add_light(self, Neon.RED, 0.3, 1.0, Vector2(0, -22))
 
@@ -113,8 +118,19 @@ func has_shield() -> bool:
 	return shielded and shield_hp > 0
 
 
+## 瞄准（锁定框收紧）时长：学《碳酸危机》，留够时间让玩家冲过去打断
 func aim_time() -> float:
-	return 0.6 if kind == "burst" else 0.5
+	return 0.9 if kind == "burst" else 0.8
+
+
+## 被踩头：仰面倒地 t 秒（期间不能攻击），之后站起来
+func knock_down(t: float) -> void:
+	if not alive() or controlled:
+		return
+	state = State.STAGGER
+	_t = t
+	_down = t
+	velocity.x = 0.0
 
 
 ## 返回 0 = 没打到，1 = 打到，2 = 被盾挡住（子弹会弹开）
@@ -213,6 +229,7 @@ func _physics_process(delta: float) -> void:
 	_shield_flash = maxf(_shield_flash - delta, 0.0)
 	_spawn_pop = maxf(_spawn_pop - delta, 0.0)
 	_grace = maxf(_grace - delta, 0.0)
+	_down = maxf(_down - delta, 0.0)
 	_recoil_v += (-_recoil * 220.0 - _recoil_v * 14.0) * delta
 	_recoil += _recoil_v * delta
 	velocity.y = minf(velocity.y + GRAVITY * delta, 600.0)
@@ -248,8 +265,26 @@ func _physics_process(delta: float) -> void:
 				state = State.STAGGER
 				_t = 0.25
 	move_and_slide()
+	_crowd(delta)
 	_update_rig(delta)
 	queue_redraw()
+
+
+## 轻度推挤：两台地面敌人重叠时各自往外让一点（最多 50 像素/秒），不会叠成一坨
+func _crowd(delta: float) -> void:
+	var r1 := hurt_rect()
+	for o in get_tree().get_nodes_in_group("enemy"):
+		if o == self or not (o is EnemyBot) or not o.alive():
+			continue
+		var r2: Rect2 = o.hurt_rect()
+		if not r1.intersects(r2):
+			continue
+		var overlap := minf(r1.end.x, r2.end.x) - maxf(r1.position.x, r2.position.x)
+		var dx: float = global_position.x - o.global_position.x
+		var sgn := signf(dx) if absf(dx) > 0.01 else (1.0 if get_instance_id() > o.get_instance_id() else -1.0)
+		var push := sgn * minf(overlap * 0.5, 50.0 * delta)
+		if not test_move(global_transform, Vector2(push, 0)):
+			global_position.x += push
 
 
 func _patrol(delta: float) -> void:
@@ -458,7 +493,7 @@ func _update_rig(delta: float) -> void:
 			State.AIM:
 				mode = "aim"
 			State.STAGGER:
-				mode = "stagger"
+				mode = "down" if _down > 0.0 else "stagger"
 			State.AIR:
 				mode = "air"
 			State.WINDUP:
@@ -466,7 +501,8 @@ func _update_rig(delta: float) -> void:
 			State.CHARGE:
 				mode = "charge"
 	var s := (1.0 + _spawn_pop * 2.0) * (1.2 if elite else 1.0)
-	rig.scale = Vector2(facing * s, s)
+	var t: float = rig.turn
+	rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.08) * s, s)
 	rig.controlled = controlled
 	rig.flash = _flash > 0.0 or (controlled and _iframes > 0.0 and int(_iframes * 20.0) % 2 == 0)
 	var a := aim_dir if (state == State.AIM or controlled) else Vector2(facing, 0.3).normalized()
@@ -478,6 +514,9 @@ func _update_rig(delta: float) -> void:
 		"aim_k": clampf(1.0 - _t / aim_time(), 0.0, 1.0) if state == State.AIM else 0.0,
 		"weapon_hot": _gun_hot > 0.0 or (controlled and input != null and not input.aim_keys),
 	}, delta)
+	var xf := rig.get_global_transform()
+	for k in rig.parts_local:
+		hurtboxes.set_part(k, xf * rig.parts_local[k])
 
 
 func _controlled_aim() -> Vector2:
@@ -568,7 +607,12 @@ func _draw() -> void:
 		var c := Color(1.3, 1.25, 1.25, 0.8) if locked else Color(1.2, 0.2, 0.25, 0.2 + 0.45 * k)
 		var spreads := [-12.0, 0.0, 12.0] if kind == "burst" else [0.0]
 		for a in spreads:
-			draw_line(gp, gp + aim_dir.rotated(deg_to_rad(a)) * 320.0, c, 1.0 + k * 1.5)
+			draw_line(gp, gp + aim_dir.rotated(deg_to_rad(a)) * 320.0, Color(c, c.a * 0.5), 1.0)
+		# 锁定框：在目标身上收紧（学《碳酸危机》），收紧前打断就不开枪
+		var tg := _tgt()
+		if tg != null:
+			var r: Rect2 = tg.hurt_rect()
+			AimLock.draw(self, Rect2(r.position - global_position, r.size), k)
 	# 冲锋蓄力：地面上一道红色预警
 	if state == State.WINDUP:
 		var k := 1.0 - _t / 0.4

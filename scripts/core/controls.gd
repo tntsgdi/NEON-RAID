@@ -18,6 +18,7 @@ const KEYS := {
 	"language": [KEY_F2],
 	"render_mode": [KEY_F3],
 	"switch_level": [KEY_F4],
+	"hitboxes": [KEY_F6],
 	"settings": [KEY_ESCAPE],
 }
 

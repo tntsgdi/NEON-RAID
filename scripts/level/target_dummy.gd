@@ -20,10 +20,13 @@ var _tilt := 0.0      # 倾斜（弹簧，弧度）
 var _tilt_v := 0.0
 var _dead := 0.0
 var _pop := 0.0
+var hurtboxes: Hurtboxes
 
 
 func _ready() -> void:
 	add_to_group("hittable")
+	hurtboxes = Hurtboxes.new()
+	add_child(hurtboxes)
 	if fx_parent == null:
 		fx_parent = get_parent()
 
@@ -66,6 +69,9 @@ func _break(dir: Vector2) -> void:
 
 
 func _process(delta: float) -> void:
+	var r := hurt_rect()
+	hurtboxes.set_part("head", Rect2(r.position, Vector2(r.size.x, 10)))
+	hurtboxes.set_part("body", Rect2(r.position + Vector2(0, 10), r.size - Vector2(0, 10)))
 	if _dead > 0.0:
 		_dead -= delta
 		if _dead <= 0.0:

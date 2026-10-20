@@ -196,18 +196,28 @@ func _shield() -> void:
 	var e = _bot(Vector2(-200, 0), true, false, -1)
 	await _drive(Vector2(-300, 0), [{"frames": 1, "move": R}, {"frames": 5}, {"frames": 1, "press": ["shoot"], "aim": R}, {"frames": 30}])
 	_check(e.hp == e.MAX_HP and e.shield_hp == e.SHIELD_HP, "正面子弹被盾弹开（血 %d 盾 %d）" % [e.hp, e.shield_hp])
+	# 索敌突进开着时，正面出刀会跳到盾上方变下劈（用户定）：盾不掉、本体掉血
+	var over = _bot(Vector2(-60, 0), true, false, -1)
+	await _drive(Vector2(-100, 0), [{"frames": 1, "move": R}, {"frames": 5}, {"frames": 1, "press": ["slash"]}, {"frames": 40}])
+	_check(not is_instance_valid(over) or (over.hp < over.MAX_HP and over.shield_hp == over.SHIELD_HP), "正面突进绕到盾上方下劈：伤本体、不碰盾")
+	if is_instance_valid(over):
+		over.queue_free()
+	# 关掉突进：正面硬砍 3 下破盾
+	var settings = root.get_node("Settings")
+	settings.v.lunge = 0.0
 	var cuts := [{"frames": 1, "move": R}, {"frames": 5}]
 	for i in 3:
 		cuts.append({"frames": 1, "press": ["slash"]})
 		cuts.append({"frames": 26})
 	await _drive(Vector2(-228, 0), cuts)
-	_check(e.shield_hp <= 0, "刀砍 3 下破盾（盾 %d）" % e.shield_hp)
+	settings.v.lunge = 2.0
+	_check(e.shield_hp <= 0, "关掉突进时刀砍 3 下破盾（盾 %d）" % e.shield_hp)
 	var back = _bot(Vector2(100, 0), true, false, -1)
 	await _drive(Vector2(128, 0), [{"frames": 1, "move": L}, {"frames": 5}, {"frames": 1, "press": ["slash"]}, {"frames": 30}])
-	_check(back.hp < back.MAX_HP and back.shield_hp == back.SHIELD_HP, "从背后砍直接伤本体（血 %d 盾 %d）" % [back.hp, back.shield_hp])
+	_check(not is_instance_valid(back) or (back.hp < back.MAX_HP and back.shield_hp == back.SHIELD_HP), "从背后砍直接伤本体")
 	var top = _bot(Vector2(300, 0), true, false, -1)
 	await _drive(Vector2(300, -50), [{"frames": 2, "move": Vector2(0, 1)}, {"frames": 1, "move": Vector2(0, 1), "press": ["slash"]}, {"frames": 30, "move": Vector2(0, 1)}])
-	_check(top.hp < top.MAX_HP and top.shield_hp == top.SHIELD_HP, "从头上下劈直接伤本体（血 %d 盾 %d）" % [top.hp, top.shield_hp])
+	_check(not is_instance_valid(top) or (top.hp < top.MAX_HP and top.shield_hp == top.SHIELD_HP), "从头上下劈直接伤本体")
 
 
 ## 上挑把敌人打上天

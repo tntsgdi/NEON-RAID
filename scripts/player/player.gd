@@ -97,6 +97,10 @@ var _slash_queued := false
 var _slash_hit_done := false
 var _slash_dash := false
 var _slash_aim := Vector2.RIGHT
+## 连击吸附：这一串连击打中的目标，后面几刀贴着它
+var _combo_target: Node2D
+## 刀的锁定标记（这一刀会冲向谁）
+var _mark: MeleeMark
 var _next_step := 0
 var _combo_window := 0.0
 ## 命中定格：刀停在命中的那一刻
@@ -125,6 +129,8 @@ func _ready() -> void:
 	if fx_parent == null:
 		fx_parent = get_parent()
 	add_to_group("controlled")
+	_mark = MeleeMark.new()
+	add_child(_mark)
 	trail = BladeTrail.new()
 	trail.z_index = 5
 	fx_parent.add_child.call_deferred(trail)
@@ -137,6 +143,7 @@ func reset_at(pos: Vector2) -> void:
 	slash_step = -1
 	_slash_queued = false
 	_lunge_t = 0.0
+	_combo_target = null
 	_slash_lock = 0.0
 	_slash_freeze = 0.0
 	_combo_window = 0.0
@@ -199,6 +206,7 @@ func _physics_process(delta: float) -> void:
 			velocity = _lunge_vel.normalized() * 120.0
 			if absf(velocity.x) < _lunge_keep:
 				velocity.x = signf(_lunge_vel.x) * _lunge_keep
+	_combo_magnet(delta)
 	var vy_before := velocity.y
 	var vx_before := velocity.x
 	var y_before := global_position.y
@@ -213,6 +221,8 @@ func _physics_process(delta: float) -> void:
 			# 髋、脚、线缆一起留在原来的世界位置，再平滑追上新地面（腿形不变，不会一帧跳过去）
 			rig.ground_shift(drop)
 	_ledge_assist()
+	_try_stomp(y_before, vy_before, T)
+	_crowd(delta)
 	_after_move(vy_before, T)
 	_update_sprint(delta, T)
 	_update_slash(delta, T)
@@ -220,6 +230,7 @@ func _physics_process(delta: float) -> void:
 	_update_facing()
 	_animate(delta, T)
 	_prev_vx = velocity.x
+	_mark.target = _melee_target() if is_in_group("controlled") and not parked and Settings.v.lunge > 0.5 else null
 
 
 # ---------------------------------------------------------------- 状态
@@ -650,6 +661,24 @@ func _start_slash(step: int, T: Dictionary) -> void:
 			facing = int(signf(to.x))
 		_slash_aim = to.normalized()
 		var gap := to.length() - MELEE_STOP
+		# 突进档位（设置页）：2 开；1 弱 = 只在 60 像素内、只在地面突进；0 关 = 原地出刀，只转向
+		var mode := int(round(Settings.v.lunge))
+		if mode == 0 or (mode == 1 and (to.length() > MELEE_LOCK_RANGE * 0.5 or state != State.GROUND)):
+			gap = 0.0
+		# 盾兵从正面：突进到盾的上方，变成下劈（从头上打，盾挡不住）
+		if gap > 0.0 and tgt.has_method("has_shield") and tgt.has_shield() and signf(global_position.x - tgt.global_position.x) == float(tgt.facing):
+			var r: Rect2 = tgt.hurt_rect()
+			var over := Vector2(r.get_center().x - tgt.facing * 3.0, r.position.y - 16.0)
+			_lunge_vel = (over - global_position) / MELEE_LUNGE_TIME
+			_lunge_t = MELEE_LUNGE_TIME
+			_lunge_keep = 0.0
+			_slash_aim = Vector2.DOWN
+			if _rect.size == LOW:
+				_set_low(false)
+			_set_state(State.AIR)
+			_mark.pulse()
+			Audio.play("dash", -10.0, 1.4)
+			return
 		# 地面突进不冲出平台：沿路径每 12 像素探一下脚下 40 像素有没有地，没有就停在边上
 		if state == State.GROUND and gap > 4.0:
 			var dir := to.normalized()
@@ -665,6 +694,7 @@ func _start_slash(step: int, T: Dictionary) -> void:
 			if state == State.GROUND and _lunge_vel.y > 0.0:
 				_lunge_vel.y = 0.0  # 地面上不往地下钻
 			_lunge_t = MELEE_LUNGE_TIME
+			_mark.pulse()
 			if state == State.WALL or state == State.SLIDE:
 				if _rect.size == LOW:
 					_set_low(false)
@@ -717,23 +747,39 @@ func _do_hit(T: Dictionary) -> void:
 	var origin := global_position + (Vector2(0, -10) if _slash_aim == Vector2.DOWN else CHEST)
 	var center := origin + _slash_aim * 14.0
 	var hit_any := false
+	var head_hit := false
+	var s: Dictionary = StriderRig.SLASH[slash_step]
+	var base := rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle())
+	# 刀光扫过的扇形（和画出来的月牙同一个范围），拿去和每个部位的物理受击框求交
+	var span := clampf(s.to - s.from, -300.0, 300.0)
+	var mid: float = (s.from + s.to) * 0.5
+	var a0 := SlashFx._world(base + mid - span * 0.5, facing)
+	var a1 := SlashFx._world(base + mid + span * 0.5, facing)
+	var pieces := Hurtboxes.sector(origin, 14.0 + reach, a0, a1)
 	for n in get_tree().get_nodes_in_group("hittable"):
 		if n.has_method("alive") and not n.alive():
 			continue
+		var part := Hurtboxes.sweep_hit(n, pieces)
+		if part == "":
+			continue
 		var r: Rect2 = n.hurt_rect()
 		var closest := Vector2(clampf(center.x, r.position.x, r.end.x), clampf(center.y, r.position.y, r.end.y))
-		if closest.distance_to(center) <= reach:
-			var power := (2 if heavy else 1) * (2 if overclock_charge > 0.0 else 1)
-			n.take_hit(_slash_aim, power, "slash")
-			Fx.sparks(fx_parent, closest, _slash_aim, 14 if heavy else 9)
-			Fx.flash(fx_parent, closest, Neon.WHITE_HOT, 10.0 if heavy else 7.0)
-			slash_hit.emit(n)
-			hit_any = true
-	var s: Dictionary = StriderRig.SLASH[slash_step]
-	var base := rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle())
+		var power := (2 if heavy else 1) * (2 if overclock_charge > 0.0 else 1)
+		# 打头：多 1 点伤害，金色火花
+		if part == "head":
+			power += 1
+			head_hit = true
+			closest = Vector2(r.get_center().x, r.position.y + 5.0)
+		n.take_hit(_slash_aim, power, "slash")
+		Fx.sparks(fx_parent, closest, _slash_aim, 14 if heavy else 9, Color(2.6, 2.0, 0.6) if part == "head" else Color(1, 1, 1))
+		Fx.flash(fx_parent, closest, Color(2.8, 2.3, 1.0) if part == "head" else Neon.WHITE_HOT, 12.0 if part == "head" or heavy else 7.0)
+		slash_hit.emit(n)
+		if not hit_any:
+			_combo_target = n
+		hit_any = true
 	SlashFx.spawn(fx_parent, origin, base + s.from, base + s.to, facing, 14.0 + reach, heavy)
 	if hit_any:
-		Audio.play("hit_heavy" if heavy else "hit", -2.0)
+		Audio.play("hit_heavy" if heavy or head_hit else "hit", -2.0)
 		if heavy:
 			Music.duck(6.0, 0.25)
 		# 下劈打中：像踩弹一样弹起来，并恢复空中冲刺
@@ -747,6 +793,80 @@ func _do_hit(T: Dictionary) -> void:
 		var stop: float = T.hit_stop * (1.5 if heavy else 1.0) * Settings.v.hitstop
 		if stop > 0.0:
 			TimeFx.hitstop(stop)
+
+
+## 连击吸附：这一串打中过的目标被打退了，后面几刀出刀时贴过去（地面横向追，空中连带竖直方向），
+## 三连击能稳稳打完，不会第二刀就够不着
+func _combo_magnet(delta: float) -> void:
+	if slash_step < 0:
+		if _combo_window <= 0.0:
+			_combo_target = null
+		return
+	# 上挑、下劈是玩家自己选的方向（下劈要弹起），不吸附
+	if _lunge_t > 0.0 or not is_instance_valid(_combo_target) or absf(_slash_aim.y) > 0.7:
+		return
+	if _combo_target.has_method("alive") and not _combo_target.alive():
+		_combo_target = null
+		return
+	var to: Vector2 = _combo_target.hurt_rect().get_center() - (global_position + CHEST)
+	if signf(to.x) != float(facing) or to.length() > MELEE_LOCK_RANGE:
+		return
+	var gap := absf(to.x) - MELEE_STOP
+	if gap > 2.0:
+		velocity.x = facing * minf(gap * 14.0, 420.0)
+	# 空中连击：目标被挑在上方时跟上去
+	if state == State.AIR and to.y < -4.0:
+		velocity.y = move_toward(velocity.y, clampf(to.y * 10.0, -320.0, 0.0), 2400.0 * delta)
+
+
+## 踩头：下落时脚穿过敌人头顶 → 伤害 1、把它踩趴，自己顺势弹起（恢复空中冲刺）
+func _try_stomp(y_before: float, vy_before: float, T: Dictionary) -> void:
+	if state != State.AIR or vy_before < 60.0:
+		return
+	for n in get_tree().get_nodes_in_group("hittable"):
+		if n == self or (n.has_method("alive") and not n.alive()):
+			continue
+		var r: Rect2 = n.hurt_rect()
+		if global_position.x < r.position.x - 5.0 or global_position.x > r.end.x + 5.0:
+			continue
+		if y_before > r.position.y + 6.0 or global_position.y < r.position.y - 3.0:
+			continue
+		n.take_hit(Vector2.DOWN, 1, "stomp")
+		if n.has_method("knock_down"):
+			n.knock_down(1.0)
+		global_position.y = minf(global_position.y, r.position.y - 1.0)
+		velocity.y = -T.jump_velocity * 0.8
+		_air_dashes = int(T.air_dashes)
+		_squash = Vector2(1.2, 0.85)
+		_land_squash = 0.6
+		Fx.sparks(fx_parent, Vector2(global_position.x, r.position.y), Vector2.UP, 10, Color(1.6, 1.8, 1.9))
+		Fx.flash(fx_parent, Vector2(global_position.x, r.position.y), Neon.WHITE_HOT, 9.0)
+		Audio.play("hit", -2.0, 0.85)
+		impact.emit(3.0, Vector2.DOWN)
+		skill.emit("stomp")
+		TimeFx.hitstop(T.hit_stop)
+		return
+
+
+## 轻度推挤：和地面敌人重叠时双方各让一半（最多 60 像素/秒）；冲刺、滑铲、突进中直接穿过去
+func _crowd(delta: float) -> void:
+	if state == State.DASH or state == State.SLIDE or _lunge_t > 0.0 or parked:
+		return
+	var r1 := hurt_rect()
+	for n in get_tree().get_nodes_in_group("enemy"):
+		if not (n is EnemyBot) or not n.alive() or n.controlled:
+			continue
+		var r2: Rect2 = n.hurt_rect()
+		if not r1.intersects(r2):
+			continue
+		var overlap := minf(r1.end.x, r2.end.x) - maxf(r1.position.x, r2.position.x)
+		var dx: float = global_position.x - n.global_position.x
+		var sgn := signf(dx) if absf(dx) > 0.01 else float(-facing)
+		var push := minf(overlap * 0.5, 60.0 * delta)
+		if not test_move(global_transform, Vector2(sgn * push, 0)):
+			global_position.x += sgn * push
+		if not n.test_move(n.global_transform, Vector2(-sgn * push, 0)):
+			n.global_position.x -= sgn * push
 
 
 ## 刀碰到敌弹就弹回去（弹回的子弹一发打死射手），同时触发神经超频

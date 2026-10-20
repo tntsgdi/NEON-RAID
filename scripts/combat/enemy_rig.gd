@@ -36,6 +36,15 @@ var _feet_off := [Vector2.ZERO, Vector2.ZERO]
 var _inert := 1.0
 var _shapes: Array = []
 var _facing := 1
+## 转身：慢—快—慢翻过来（由 EnemyBot 拿去设 scale.x）
+var turn := 1.0
+var _turn_lin := 1.0
+var _time := 0.0
+## 头：比躯干稳（只跟一部分倾斜），但被打时甩得比躯干更狠，弹簧回来
+var _head_rot := 0.0
+var _head_v := 0.0
+## 受击框（骨架本地坐标）：head / body / legs，EnemyBot 每帧换成世界坐标交给 Hurtboxes
+var parts_local := {}
 
 
 ## 被打：躯干向后弹，翻滚冲量（power 越大越猛）
@@ -53,6 +62,11 @@ func fire() -> void:
 ## m：state（walk / idle / aim / cool / stagger / air / windup / charge / hop），facing，vel，aim（世界方向），aim_k（瞄准进度 0..1），on_floor
 func update(m: Dictionary, delta: float) -> void:
 	_facing = m.facing
+	_time += delta
+	_turn_lin = move_toward(_turn_lin, float(_facing), delta / 0.16 * 2.0)
+	var ts := (_turn_lin + 1.0) * 0.5
+	turn = ts * ts * (3.0 - 2.0 * ts) * 2.0 - 1.0
+	var turning := 1.0 - absf(turn)
 	var state: String = m.state
 	var vel: Vector2 = m.vel
 	var speed := absf(vel.x)
@@ -62,8 +76,14 @@ func update(m: Dictionary, delta: float) -> void:
 	var lean := clampf(vel.x * _facing / 200.0, -0.5, 1.0) * 10.0
 	var hip := -HIP_H
 	match state:
+		"idle":
+			# 呼吸：髋和躯干缓慢起伏
+			hip += sin(_time * 2.4) * 0.5
+			lean += sin(_time * 2.4 + 0.6) * 1.2
 		"walk":
 			hip += 1.0 - absf(sin(_phase * TAU * 2.0)) * 2.8
+			# 重心随步伐前后晃：落脚时往前压、蹬地时直起来
+			lean += sin(_phase * TAU * 2.0 + 0.8) * 2.5
 		"aim":
 			lean = -6.0
 			hip += 1.0
@@ -80,6 +100,12 @@ func update(m: Dictionary, delta: float) -> void:
 			lean = 6.0
 		"hop":
 			lean = 18.0
+		"down":
+			# 被踩趴：仰面倒地，髋贴地
+			lean = -72.0
+			hip = -5.0
+	hip += turning * 1.5
+	lean -= turning * 4.0
 	_lean_v += ((lean - _lean) * 320.0 - _lean_v * 26.0) * delta
 	_lean += _lean_v * delta
 	_pelvis_v += ((hip - _pelvis_y) * 500.0 - _pelvis_v * 32.0) * delta
@@ -123,6 +149,8 @@ func update(m: Dictionary, delta: float) -> void:
 				t = Vector2(-2.0 if i == 0 else -8.0, _pelvis_y + 12.0)
 			"stagger":
 				t = Vector2(6.0 if i == 0 else -2.0, 0)
+			"down":
+				t = Vector2(9.0 if i == 0 else 5.0, 0)
 		targets.append(t)
 	if state != _last_mode:
 		for i in 2:
@@ -136,7 +164,8 @@ func update(m: Dictionary, delta: float) -> void:
 
 	# ---- 枪臂：瞄准时抬起，冷却慢慢放下；开枪后坐
 	var aiming: bool = state == "aim" or (controlled and m.get("weapon_hot", false))
-	_gun_raise = move_toward(_gun_raise, 1.0 if aiming else 0.0, delta * (8.0 if aiming else 2.5))
+	# 抬枪快、放下慢，都是缓动（不是匀速）
+	_gun_raise = lerpf(_gun_raise, 1.0 if aiming else 0.0, 1.0 - exp(-(14.0 if aiming else 4.0) * delta))
 	_recoil = move_toward(_recoil, 0.0, delta * 7.0)
 	var aim_local: Vector2 = Vector2(m.aim.x * _facing, m.aim.y)
 	if aim_local.length() < 0.1:
@@ -149,6 +178,12 @@ func update(m: Dictionary, delta: float) -> void:
 	var up := Vector2.UP.rotated(rot)
 	var neck := pelvis + up * TORSO
 	var shoulder := pelvis + up * (TORSO - 2.0)
+	# 头的角度：躯干倾斜只跟 35%，被打时多甩 30%，再朝瞄准方向点一点
+	var look_deg := clampf(_aim.y * 25.0, -20.0, 20.0) * _gun_raise
+	var head_target := _lean * 0.35 + _hit * 1.3 + look_deg
+	_head_v += ((head_target - _head_rot) * 260.0 - _head_v * 15.0) * delta
+	_head_rot += _head_v * delta
+	var hrot := deg_to_rad(_head_rot)
 	var head_c := neck + up * 4.5 + Vector2(1.5, 0).rotated(rot)
 	var red := Color(0.3, 1.1, 1.25) if controlled else Color(1.25, 0.26, 0.32)
 	var dark := Color(0.05, 0.14, 0.18) if controlled else Color(0.2, 0.05, 0.08)
@@ -169,14 +204,24 @@ func update(m: Dictionary, delta: float) -> void:
 	var side := Vector2(1, 0).rotated(rot)
 	var torso := PackedVector2Array([pelvis - side * w0, pelvis + side * w0, neck + side * w1, neck - side * w1])
 	_shapes.append(["poly", torso, fill, red])
+	var body_r := Rect2(torso[0], Vector2.ZERO)
+	for p in torso:
+		body_r = body_r.expand(p)
+	var fx0 := minf(minf(_feet[0].x, _feet[1].x), pelvis.x) - 2.0
+	var fx1 := maxf(maxf(_feet[0].x, _feet[1].x), pelvis.x) + 3.0
+	parts_local = {
+		"head": Rect2(head_c - Vector2(5, 5), Vector2(10, 10)),
+		"body": body_r,
+		"legs": Rect2(Vector2(fx0, minf(pelvis.y, -2.0)), Vector2(fx1 - fx0, maxf(-pelvis.y, 2.0))),
+	}
 	_shapes.append(["line", neck - side * (w1 + 1.0), neck - side * (w1 - 3.0), 3.0, metal])  # 肩甲
 	# 头 + 目镜（目镜朝瞄准方向偏一点）
 	var head := PackedVector2Array()
 	for c in [Vector2(-4.5, -4), Vector2(4.5, -4), Vector2(4.5, 4), Vector2(-4.5, 4)]:
-		head.append(head_c + c.rotated(rot * 0.6))
+		head.append(head_c + c.rotated(hrot))
 	_shapes.append(["poly", head, fill, red])
 	var look := clampf(_aim.y * 2.0, -1.5, 1.5)
-	_shapes.append(["line", head_c + Vector2(0.5, -1.0 + look).rotated(rot * 0.6), head_c + Vector2(4.5, -1.0 + look).rotated(rot * 0.6), 2.0, Neon.WHITE_HOT if flash else eye])
+	_shapes.append(["line", head_c + Vector2(0.5, -1.0 + look).rotated(hrot), head_c + Vector2(4.5, -1.0 + look).rotated(hrot), 2.0, Neon.WHITE_HOT if flash else eye])
 	# 前腿
 	_leg(pelvis + Vector2(1.5, 0), _feet[0], red, 4.0)
 	# 武器臂
@@ -188,8 +233,10 @@ func update(m: Dictionary, delta: float) -> void:
 		_shapes.append(["poly", horn, metal, red])
 		muzzle_world = to_global(hand)
 	else:
-		var rest_dir := Vector2(0.8, 0.6).normalized()
-		var dir := rest_dir.slerp(_aim, _gun_raise).normalized()
+		# 放下时枪口随步伐轻轻摆
+		var rest_dir := Vector2(0.8, 0.6 + sin(_phase * TAU) * 0.12 * ratio).normalized()
+		var r := _gun_raise * _gun_raise * (3.0 - 2.0 * _gun_raise)
+		var dir := rest_dir.slerp(_aim, r).normalized()
 		var hand := shoulder + dir * (UPPER_ARM + FOREARM - 2.0) - dir * _recoil * 3.0
 		_arm(shoulder + Vector2(1, 0), hand, red, 2.4)
 		var gun_end := hand + dir * 10.0

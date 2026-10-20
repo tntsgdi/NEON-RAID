@@ -40,6 +40,9 @@ var _ram_t := 0.0
 var _ram_hit := {}
 var _dash_t := 0.0
 var _dead := false
+var hurtboxes: Hurtboxes
+## 瞄准（锁定框收紧）时长
+const AIM_TIME := 0.8
 
 
 func _ready() -> void:
@@ -53,6 +56,8 @@ func _ready() -> void:
 	add_child(cs)
 	add_to_group("hittable")
 	add_to_group("possessable")
+	hurtboxes = Hurtboxes.new()
+	add_child(hurtboxes)
 	if not wild:
 		add_to_group("enemy")
 	_home = global_position
@@ -86,6 +91,10 @@ func take_hit(dir: Vector2, power: int, _kind := "slash") -> int:
 	hp -= power
 	_flash = 0.1
 	velocity += dir * (180.0 + 60.0 * power)
+	# 瞄准中被打：锁定被打断，过一会儿重新瞄
+	if _mode == "aim" or _mode == "fire":
+		_mode = "cool"
+		_t = 0.7
 	if hp <= 0:
 		_die(dir)
 	return 1
@@ -120,6 +129,7 @@ func _physics_process(delta: float) -> void:
 	_flash = maxf(_flash - delta, 0.0)
 	_iframes = maxf(_iframes - delta, 0.0)
 	_phase += delta
+	hurtboxes.set_part("body", hurt_rect())
 	if controlled:
 		_controlled_physics(delta)
 	elif wild:
@@ -145,7 +155,7 @@ func _hostile(delta: float) -> void:
 		"patrol":
 			if t != null and t.global_position.distance_to(global_position) < SIGHT and _clear(t):
 				_mode = "aim"
-				_t = 0.45
+				_t = AIM_TIME
 				Audio.play("charge", -12.0, 1.3)
 		"aim":
 			want = global_position
@@ -314,5 +324,9 @@ func _draw() -> void:
 	draw_circle(Vector2(facing * 3, 0), 1.6, eye)
 	draw_set_transform(Vector2.ZERO)
 	if not controlled and _mode == "aim":
-		var k := 1.0 - _t / 0.45
-		draw_line(gun_pos() - global_position, gun_pos() - global_position + _aim * 260.0, Color(1.2, 0.2, 0.25, 0.2 + 0.5 * k), 1.0 + k)
+		var k := 1.0 - _t / AIM_TIME
+		draw_line(gun_pos() - global_position, gun_pos() - global_position + _aim * 260.0, Color(1.2, 0.2, 0.25, 0.1 + 0.25 * k), 1.0)
+		var tg := _tgt()
+		if tg != null:
+			var r: Rect2 = tg.hurt_rect()
+			AimLock.draw(self, Rect2(r.position - global_position, r.size), k)

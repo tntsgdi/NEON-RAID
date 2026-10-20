@@ -76,7 +76,7 @@ func _ready() -> void:
 	player = Player.new()
 	player.fx_parent = world
 	player.impact.connect(_on_impact)
-	player.skill.connect(func(kind): stats[kind] += 1)
+	player.skill.connect(func(kind): stats[kind] = stats.get(kind, 0) + 1)
 	player.sprint_started.connect(func(): _zoom_pulse = 0.05)
 	_wind = AudioStreamPlayer.new()
 	var wind: AudioStreamWAV = load("res://assets/sfx/wind.wav")
@@ -397,6 +397,8 @@ func _process(delta: float) -> void:
 		I18n.toggle()
 	if Input.is_action_just_pressed("render_mode"):
 		set_pixel_mode(not pixel_mode)
+	if Input.is_action_just_pressed("hitboxes"):
+		Hurtboxes.show_debug = not Hurtboxes.show_debug
 	if Input.is_action_just_pressed("switch_level"):
 		load_level("arena" if range_ != null else ("possess" if arena != null else "range"))
 

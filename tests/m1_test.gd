@@ -288,7 +288,9 @@ func _slash() -> void:
 	# 上挑：按住上再挥刀，刀朝正上方
 	await _drive(Vector2(352, 0), [{"frames": 2, "move": Vector2(0, -1)}, {"frames": 1, "move": Vector2(0, -1), "press": ["slash"]}, {"frames": 30, "move": Vector2(0, -1)}])
 	_check(player._slash_aim == Vector2.UP, "按住上挥刀 = 上挑（%s）" % str(player._slash_aim))
-	# 下劈：空中按住下挥刀，打中训练机会弹起来
+	# 下劈：空中按住下挥刀，打中训练机会弹起来（打头多 1 点伤害，前面几刀可能已经把它打碎了：先复原）
+	d._dead = 0.0
+	d.hp = d.MAX_HP
 	var pogo := await _drive(Vector2(380, -58), [{"frames": 3, "move": Vector2(0, 1)}, {"frames": 1, "move": Vector2(0, 1), "press": ["slash"]}, {"frames": 40, "move": Vector2(0, 1)}])
 	var bounced := pogo.any(func(e): return e.vel.y < -300.0)
 	_check(player._slash_aim == Vector2.DOWN and bounced, "空中按住下挥刀 = 下劈，打中后弹起（%s）" % str(player._slash_aim))

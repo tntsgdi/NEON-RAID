@@ -80,6 +80,7 @@ const STRINGS := {
 	"SET_rain": ["雨", "Rain"],
 	"SET_glow": ["辉光", "Glow"],
 	"SET_hitstop": ["打击停顿", "Hit stop"],
+	"SET_lunge": ["索敌突进 关/弱/开", "Lunge off/weak/on"],
 	"SET_music": ["音乐音量", "Music volume"],
 	"SET_sfx": ["音效音量", "SFX volume"],
 	"SET_HINT": ["Esc / 手柄 Start 关闭 · 设置会自动保存

@@ -35,12 +35,25 @@ const SLASH := [
 	{"from": -165.0, "to": 195.0, "over": 20.0},
 ]
 
-## 机身外形（以髋部为原点、面朝右）
-const HULL := [Vector2(-13, -11), Vector2(6, -14), Vector2(17, -8), Vector2(10, -1), Vector2(-9, -2), Vector2(-15, -7)]
-const VISOR := [Vector2(9, -11), Vector2(15, -8.5), Vector2(14, -7), Vector2(8, -9)]
-const SHOULDER := Vector2(7, -3)
-const TURRET := Vector2(-4, -13)
-const CABLE_ANCHORS := [Vector2(-14, -9), Vector2(-12, -5)]
+## 机身（胸甲）外形：参考图里圆润的胸甲（以髋部为原点、面朝右）
+const HULL := [Vector2(-12, -5), Vector2(-10, -12), Vector2(-2, -16), Vector2(8, -14), Vector2(13, -7), Vector2(8, -1), Vector2(-7, -1)]
+## 胸口的核心环
+const CORE := Vector2(2, -8)
+## 脖子根（在机身上）；头是横放的传感器盒，以脖子顶为原点
+const NECK := Vector2(6, -14)
+const NECK_LEN := 5.0
+const HEAD := [Vector2(-6, -3.5), Vector2(8, -3.5), Vector2(10, -0.5), Vector2(8, 2), Vector2(-6, 2)]
+const EYE := [Vector2(5, -2), Vector2(9.5, -1.2), Vector2(9.5, 0.6), Vector2(5, 0.6)]
+const SHOULDER := Vector2(8, -6)
+const TURRET := Vector2(-6, -13)
+const CABLE_ANCHORS := [Vector2(-10, -12), Vector2(-11, -8)]
+## 持刀三档（刀相对机体的角度，0 = 正前方，90 = 正下方）：
+##   走路 / 待机 竖在身前、刀尖点地；跑步 向前平举；疾驰 甩到身后拖着
+const HOLD_WALK := 55.0
+const HOLD_RUN := 12.0
+const HOLD_SPRINT := 165.0
+## 转身时长（秒）：慢—快—慢的缓动，像动物转身先收身体再甩过去
+const TURN_TIME := 0.14
 const CABLE_POINTS := 7
 const CABLE_SEG := 4.0
 
@@ -78,6 +91,17 @@ var _blade_off := 0.0
 ## 受击后仰的剩余时间（目镜同时闪红）
 var _flinch := 0.0
 var _blade_t := 1.0
+## 刀臂不出刀时是弹簧（换持刀姿势会甩过去、带一点过冲）
+var _blade_vel := 0.0
+var _turn_lin := 1.0
+## 出刀时髋部往前送（重心前移），弹簧
+var _pelvis_x := 0.0
+var _px_vel := 0.0
+## 头：像鸟一样稳住，角度和位置都是弹簧
+var _head_angle := 0.0
+var _head_vel := 0.0
+var _head_off := Vector2.ZERO
+var _head_off_vel := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -93,8 +117,10 @@ func update(m: Dictionary, delta: float) -> void:
 	if m.facing != _facing:
 		_mirror_cables()
 		_facing = m.facing
-	# 转身：任何速度都用约 0.1 秒压扁再翻过来，不会一帧镜像过去
-	turn = move_toward(turn, float(m.facing), delta / 0.1 * 2.0)
+	# 转身：慢—快—慢（smoothstep）约 0.14 秒压扁再翻过来；中途身体收一下、髋往下沉
+	_turn_lin = move_toward(_turn_lin, float(m.facing), delta / TURN_TIME * 2.0)
+	var ts := (_turn_lin + 1.0) * 0.5
+	turn = ts * ts * (3.0 - 2.0 * ts) * 2.0 - 1.0
 	var state: String = m.state
 	var ratio: float = m.speed_ratio
 
@@ -130,6 +156,17 @@ func update(m: Dictionary, delta: float) -> void:
 			target_y = -11.0
 	target_angle += clampf(m.accel_x * m.facing * 0.012, -14.0, 16.0)
 	target_y += m.land_squash * 7.0
+	var turning := 1.0 - absf(turn)
+	target_y += turning * 3.0
+	target_angle -= turning * 6.0
+	# 出刀：重心前送、髋下沉（地面上）
+	var lunge_x := 0.0
+	if m.slash_step >= 0 and (state == "idle" or state == "run" or state == "skid"):
+		var w := sin(clampf(m.slash_t / 0.7, 0.0, 1.0) * PI)
+		lunge_x = 4.0 * w
+		target_y += 2.0 * w
+	_px_vel += ((lunge_x - _pelvis_x) * 400.0 - _px_vel * 28.0) * delta
+	_pelvis_x += _px_vel * delta
 	if m.slash_step >= 0:
 		target_angle += _slash_twist(m.slash_step, m.slash_t)
 	var k_angle := 260.0 if state != "dash" else 600.0
@@ -138,7 +175,7 @@ func update(m: Dictionary, delta: float) -> void:
 	_pelvis_vel += ((target_y - _pelvis_y) * 500.0 - _pelvis_vel * 30.0) * delta
 	_pelvis_y += _pelvis_vel * delta
 	# 贴墙时机身挪离墙面，不插进墙里（墙在身后）
-	var pelvis := Vector2(8.0 if state == "wall" else 0.0, _pelvis_y)
+	var pelvis := Vector2((8.0 if state == "wall" else 0.0) + _pelvis_x, _pelvis_y)
 	var rot := deg_to_rad(hull_angle)
 
 	# ---- 腿：脚尖落点 → 三节 IK（膝朝前、踝朝后）
@@ -163,13 +200,27 @@ func update(m: Dictionary, delta: float) -> void:
 
 	# ---- 刀臂
 	var shoulder := pelvis + SHOULDER.rotated(rot)
-	var rest := 150.0 + hull_angle * 0.5
-	if state == "kneel":
-		rest = 100.0
-	elif state == "wall":
-		rest = 60.0
-	elif state == "dash":
-		rest = 175.0
+	var rest := 130.0 + hull_angle * 0.3
+	match state:
+		"idle":
+			rest = HOLD_WALK + sin(m.time * 2.2) * 2.0
+		"run":
+			if m.sprint:
+				rest = HOLD_SPRINT + hull_angle * 0.3
+			elif ratio > 0.6:
+				rest = HOLD_RUN + sin(m.run_phase * TAU * 2.0) * 4.0
+			else:
+				rest = HOLD_WALK + sin(m.run_phase * TAU) * 6.0
+		"skid":
+			rest = 30.0
+		"kneel":
+			rest = 100.0
+		"wall":
+			rest = 60.0
+		"dash":
+			rest = 175.0
+		"slide":
+			rest = 170.0
 	var want := rest
 	var slashing: bool = m.slash_step >= 0
 	if slashing:
@@ -182,14 +233,37 @@ func update(m: Dictionary, delta: float) -> void:
 	_last_step = m.slash_step
 	if slashing:
 		# 出刀：前约 0.06 秒从原来的位置接过去，之后严格按挥刀曲线走（命中判定不受影响）
+		var before := _blade_angle
 		_blade_angle = want + _blade_off * exp(-_blade_t / 0.05)
+		# 记下刀的角速度：收刀时带着这股劲甩过去再回位（随势）
+		_blade_vel = clampf(rad_to_deg(angle_difference(deg_to_rad(before), deg_to_rad(_blade_angle))) / maxf(delta, 0.001), -1500.0, 1500.0)
 	else:
-		_blade_angle = lerp_angle_deg(_blade_angle, want, 1.0 - exp(-14.0 * delta))
+		# 弹簧（阻尼比约 0.7）：换持刀姿势时刀甩过去、稍微过一点再回来，像手臂有重量
+		var diff := rad_to_deg(angle_difference(deg_to_rad(_blade_angle), deg_to_rad(want)))
+		_blade_vel += (diff * 240.0 - _blade_vel * 22.0) * delta
+		_blade_angle += _blade_vel * delta
 	_blade_t += delta
 	var bdir := Vector2.from_angle(deg_to_rad(_blade_angle))
 	var hand := shoulder + bdir * ARM_LEN
 	var tip := hand + bdir * BLADE_LEN
 	_blade_pts = [to_global(hand + bdir * 4.0), to_global(tip)]
+
+	# ---- 头：像鸟一样稳住——机身怎么前倾后仰，头只跟四分之一；朝瞄准 / 出刀方向点头；
+	#      位置挂在脖子上，加速、落地时会晚一点跟上（弹簧）
+	var look := 0.0
+	if slashing:
+		look = clampf(wrapf(m.slash_dir, -180.0, 180.0), -30.0, 30.0)
+	elif m.aim_local.x > 0.2:
+		look = clampf(rad_to_deg(m.aim_local.angle()), -25.0, 25.0) * 0.6
+	var head_target := hull_angle * 0.25 + look - turning * 10.0
+	_head_vel += ((head_target - _head_angle) * 320.0 - _head_vel * 22.0) * delta
+	_head_angle += _head_vel * delta
+	var off_target := Vector2(clampf(-m.accel_x * m.facing * 0.0015, -3.0, 3.0), m.land_squash * 2.5)
+	_head_off_vel += ((off_target - _head_off) * 380.0 - _head_off_vel * 20.0) * delta
+	_head_off += _head_off_vel * delta
+	var neck_base := pelvis + NECK.rotated(rot)
+	var head_pos := neck_base + Vector2(0, -NECK_LEN).rotated(deg_to_rad(hull_angle * 0.4)) + _head_off
+	var hrot := deg_to_rad(_head_angle)
 
 	# ---- 背炮
 	var mount := pelvis + TURRET.rotated(rot)
@@ -214,8 +288,9 @@ func update(m: Dictionary, delta: float) -> void:
 		"pelvis": tf * pelvis,
 		"knee_f": tf * legs[0][1], "knee_b": tf * legs[1][1],
 		"toe_f": tf * legs[0][3], "toe_b": tf * legs[1][3],
-		"nose": tf * (pelvis + HULL[2].rotated(rot)),
-		"tail": tf * (pelvis + HULL[5].rotated(rot)),
+		"nose": tf * (pelvis + HULL[4].rotated(rot)),
+		"tail": tf * (pelvis + HULL[0].rotated(rot)),
+		"head": tf * (head_pos + HEAD[2].rotated(hrot)),
 		"blade_tip": tf * tip,
 		"muzzle": tf * barrel_end,
 	}
@@ -229,9 +304,15 @@ func update(m: Dictionary, delta: float) -> void:
 	for p in HULL:
 		hull.append(pelvis + p.rotated(rot))
 	_shapes.append(["poly", hull, FILL, EDGE])
+	_shapes.append(["line", neck_base, head_pos, 3.0, EDGE])
+	_shapes.append(["line", neck_base, head_pos, 1.4, FILL])
+	var head := PackedVector2Array()
+	for p in HEAD:
+		head.append(head_pos + p.rotated(hrot))
+	_shapes.append(["poly", head, FILL, EDGE])
 	var visor := PackedVector2Array()
-	for p in VISOR:
-		visor.append(pelvis + p.rotated(rot))
+	for p in EYE:
+		visor.append(head_pos + p.rotated(hrot))
 	# glow < 0：没有意识的空机体，目镜和核心变暗
 	var g: float = maxf(m.glow, 0.0)
 	_flinch = maxf(_flinch - delta, 0.0)
@@ -242,19 +323,24 @@ func update(m: Dictionary, delta: float) -> void:
 	# 待机：目镜上一道亮光来回扫（机器在"看"）
 	if state == "idle" and m.glow >= 0.0:
 		var u := 0.5 + 0.5 * sin(m.time * 1.7)
-		var a0: Vector2 = VISOR[3].lerp(VISOR[1], u)
-		_shapes.append(["dot", pelvis + a0.rotated(rot), 1.1, Color(2.4, 2.6, 2.6, 0.9)])
+		var a0: Vector2 = EYE[3].lerp(EYE[1], u)
+		_shapes.append(["dot", head_pos + a0.rotated(hrot), 1.1, Color(2.4, 2.6, 2.6, 0.9)])
 	# 核心灯：血量的颜色（玩家不用看 HUD 也知道自己还剩多少血）
 	var core: Color = core_color(m.get("hp_k", 1.0), m.time) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
-	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 4.0 + g * 2.0, Color(core.r, core.g, core.b, 0.18)])
-	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 1.8 + g, core.lerp(Color.WHITE, g * 0.5)])
+	var core_p := pelvis + CORE.rotated(rot)
+	_shapes.append(["dot", core_p, 4.5 + g * 2.0, Color(core.r, core.g, core.b, 0.16)])
+	_shapes.append(["ring", core_p, 3.0, core])
+	_shapes.append(["dot", core_p, 1.3 + g, core.lerp(Color.WHITE, g * 0.5)])
 	if state == "kneel":
 		_shapes.append(["ring", pelvis + Vector2(0, -4), 20.0 + 3.0 * sin(m.time * 3.0), Color(0.4, 1.4, 1.7, 0.35 + 0.2 * sin(m.time * 3.0))])
 	_shapes.append(["line", mount, barrel_end, 3.5, Color(0.35, 0.4, 0.48)])
 	_shapes.append(["line", mount, barrel_end, 1.0, EDGE])
 	_shapes.append(["dot", mount, 2.5, FILL])
 	_add_leg(legs[0], FILL, EDGE)
-	_shapes.append(["line", shoulder, hand, 3.0, EDGE])
+	var elbow := shoulder + bdir.rotated(0.9) * ARM_LEN * 0.7
+	_shapes.append(["line", shoulder, elbow, 3.2, EDGE])
+	_shapes.append(["line", elbow, hand, 3.0, EDGE])
+	_shapes.append(["dot", elbow, 1.6, FILL])
 	# 刀残影：挥得越快，前一帧到这一帧之间留下的半透明刀身越多
 	var swing := angle_difference(deg_to_rad(_prev_blade), deg_to_rad(_blade_angle))
 	if absf(swing) > deg_to_rad(6.0):
@@ -270,7 +356,8 @@ func update(m: Dictionary, delta: float) -> void:
 	if hot:
 		_shapes.append(["line", hand, tip, 4.0 + heat * 3.0, Color(0.25, 0.9, 1.0, 0.25 + heat * 0.2)])
 	_shapes.append(["line", hand, tip, 2.0, BLADE.lerp(Color(2.6, 2.8, 2.9), heat) if hot else BLADE_REST])
-	_shapes.append(["dot", shoulder, 2.0, EDGE])
+	_shapes.append(["dot", shoulder, 3.2, FILL])
+	_shapes.append(["ring", shoulder, 3.2, EDGE])
 	queue_redraw()
 
 
@@ -490,7 +577,9 @@ static func draw_shapes(ci: CanvasItem, shapes: Array) -> void:
 				var pts: Array = s[1]
 				for i in range(1, pts.size()):
 					var k := 1.0 - float(i) / pts.size()
-					ci.draw_line(pts[i - 1], pts[i], Color(0.4, 1.6, 1.9, 0.25 + 0.6 * k), 0.6 + 1.6 * k, true)
+					ci.draw_line(pts[i - 1], pts[i], Color(0.25, 0.3, 0.38, 0.9), 1.4, true)
+					ci.draw_line(pts[i - 1], pts[i], Color(0.4, 1.6, 1.9, 0.15 + 0.4 * k), 0.6, true)
+				ci.draw_circle(pts[-1], 1.6, Color(1.0, 2.2, 2.4))
 
 
 static func lerp_angle_deg(a: float, b: float, t: float) -> float:
