@@ -13,6 +13,8 @@ var _layers: Array[AudioStreamPlayer] = []
 var _pitch := 1.0
 var _duck := 0.0
 var _duck_rate := 40.0
+var _sting: AudioStreamPlayer
+var _stings := {}
 
 
 func _ready() -> void:
@@ -27,7 +29,22 @@ func _ready() -> void:
 		_layers.append(p)
 	for p in _layers:
 		p.play()
+	_sting = AudioStreamPlayer.new()
+	_sting.bus = &"Music"
+	add_child(_sting)
+	for n in ["wave", "clear"]:
+		_stings[n] = load("res://assets/music/sting_%s.ogg" % n)
 	_apply()
+
+
+## 过渡短句（"wave" 波次开始、"clear" 清场）：叠在循环上播一次，循环暂时让位
+func sting(name: String) -> void:
+	if not _stings.has(name):
+		return
+	_sting.stream = _stings[name]
+	_sting.volume_db = VOLUME_DB + 2.0
+	_sting.play()
+	duck(5.0, 1.5)
 
 
 ## 让位：音乐压低 db 分贝，然后在 sec 秒内恢复

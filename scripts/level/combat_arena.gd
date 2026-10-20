@@ -99,20 +99,24 @@ func _physics_process(delta: float) -> void:
 	if not auto_waves or cleared:
 		return
 	enemies = enemies.filter(func(e): return is_instance_valid(e) and e.alive())
-	if not enemies.is_empty():
+	# 最后一波打完才算清场；之前的波次只要场上只剩 1 个就开始倒数刷下一波
+	var ready := enemies.is_empty() if wave >= WAVES.size() else enemies.size() <= 1
+	if not ready:
 		return
 	if _pending > 0.0:
 		_pending -= delta
 		if _pending <= 0.0:
 			if wave >= WAVES.size():
 				cleared = true
+				Music.sting("clear")
 				return
 			for s in WAVES[wave]:
 				spawn(s[0], s[2], s[3], s[1])
 			Audio.play("charge", -8.0)
+			Music.sting("wave")
 			wave += 1
 	else:
-		_pending = 1.0
+		_pending = 1.2
 
 
 func _draw() -> void:

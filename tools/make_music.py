@@ -42,8 +42,17 @@ LEVEL = {"A": 0.72, "B": 0.9, "C": 1.0, "D": 0.68}
 
 
 def chord_at(bar):
+    """每段 16 小节 = 4 句；第 2、4 句的末小节换成属和弦（A 大三）制造张力，句与句不完全相同。"""
     sec = SECTIONS[bar // 16]
+    phrase = (bar // 4) % 4
+    if bar % 4 == 3 and phrase in (1, 3) and sec in "AB":
+        return sec, (45, "M")
     return sec, PHRASES[sec][bar % 4]
+
+
+def variant(bar):
+    """这一句在段里是第几句（0–3），用来做变奏。"""
+    return (bar // 4) % 4
 
 
 def hz(m):
@@ -141,6 +150,12 @@ def snare():
     return np.tanh((tone + noise) * 1.6) * 0.7
 
 
+def crash():
+    n = int(1.4 * SR)
+    t = np.arange(n) / SR
+    return hp(rng.standard_normal(n), 5000, 2) * np.exp(-t * 2.6) * 0.5
+
+
 def clap():
     n = int(0.2 * SR)
     t = np.arange(n) / SR
@@ -227,11 +242,18 @@ MOTIF = [(0.0, 12, 1.0), (1.0, 15, 0.5), (1.5, 19, 1.5), (3.0, 17, 1.0),
          (12.0, 24, 2.0), (14.0, 22, 1.0), (15.0, 19, 1.0)]
 
 
+MOTIF_B = [(0.0, 12, 1.0), (1.0, 15, 0.5), (1.5, 19, 1.5), (3.0, 22, 1.0),
+           (4.0, 24, 1.5), (5.5, 22, 0.5), (6.0, 19, 2.0),
+           (8.0, 17, 1.0), (9.0, 15, 1.0), (10.0, 14, 2.0),
+           (12.0, 12, 3.0), (15.0, 7, 1.0)]
+
+
 def motif_notes(phrase_start_bar):
     """把动机映射到这一句（4 小节）的和弦上：每个音取所在小节和弦根音 + 音程，取 D 小调内的音。"""
     scale = {0, 2, 3, 5, 7, 9, 10}  # D 小调（相对 D）
     out = []
-    for beat, iv, length in MOTIF:
+    motif = MOTIF if (phrase_start_bar // 4) % 2 == 0 else MOTIF_B
+    for beat, iv, length in motif:
         bar = phrase_start_bar + int(beat // 4)
         _, (root, kind) = chord_at(bar % BARS)
         m = 50 + iv  # 以 D 为基准，保证旋律在调内
@@ -248,7 +270,11 @@ def explore():
         sec, (root, kind) = chord_at(b)
         g = LEVEL[sec]
         t0 = b * BAR
-        tr.place(pad(triad(root, kind), BAR + 0.4, 1300 if sec in "AD" else 1900), t0, 0.3 * g, -0.2)
+        v = variant(b)
+        cut = 1300 if sec in "AD" else 1900
+        if v == 3:
+            cut = 900 + 600 * (b % 4)  # 第 4 句：滤波逐小节扫开，引向下一句
+        tr.place(pad(triad(root, kind), BAR + 0.4, cut), t0, 0.3 * g, -0.2)
         tr.place(pad(triad(root + 12, kind), BAR + 0.4), t0, 0.1 * g, 0.3)
         tr.place(sub(root, BAR), t0, 0.42 * g)
         for s in range(8):
@@ -291,19 +317,26 @@ def combat():
         if sec != "A" or b % 16 >= 8:
             for q in ([2] if half else [1, 3]):
                 tr.place(snare(), t0 + q * BEAT, 0.6 * g, 0.05)
+        v = variant(b)
         if b % 4 == 3 and sec in "BC":
-            for s in range(4):
-                tr.place(snare(), t0 + 3 * BEAT + s * BEAT / 4, (0.25 + 0.1 * s) * g, 0.05)
+            fills = 8 if v == 3 else 4
+            for s in range(fills):
+                at = t0 + (4 - fills / 4) * BEAT + s * BEAT / 4
+                tr.place(snare(), at, (0.2 + 0.4 * s / fills) * g, 0.05)
+        if b % 4 == 0 and v == 0 and sec in "BC":
+            tr.place(crash(), t0, 0.35 * g, -0.3)
         for s in range(16):
             if half and s % 2:
                 continue
-            tr.place(hat(open_=(s % 4 == 2)), t0 + s * BEAT / 4, (0.42 if s % 2 else 0.26) * g, 0.35)
+            tr.place(hat(open_=(s % 4 == 2 or (v == 1 and s % 2 == 1))), t0 + s * BEAT / 4, (0.42 if s % 2 else 0.26) * g, 0.35)
         # 贝斯：两小节一变的节奏型（第二小节加切分和八度跳）
         pattern = [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1] if b % 2 else [1, 1, 1, 1] * 4
+        if v == 2:
+            pattern = [1, 0, 1, 0] * 4  # 第 3 句：贝斯改成八度泵音
         for s in range(16):
             if not pattern[s] or (half and s % 2):
                 continue
-            m = root - 12 + (12 if s % 4 == 2 else 0) + (7 if b % 2 and s == 14 else 0)
+            m = root - 12 + (12 if s % 4 == 2 or (v == 2 and s % 4 == 2) else 0) + (7 if b % 2 and s == 14 else 0)
             tr.place(pluck_bass(m, BEAT / 4 * 0.95, 2000 if s % 4 == 0 else 1200), t0 + s * BEAT / 4, 0.42 * g)
         # 琶音：0-7-12-15 的上下跑动，C 段加快亮度
         ch = triad(root + 24, kind)
@@ -345,6 +378,55 @@ def peak():
     return tr
 
 
+class Sting(Track):
+    """不循环的短句。"""
+
+    def __init__(self, seconds):
+        self.n = int(round(seconds * SR))
+        self.L = np.zeros(self.n)
+        self.R = np.zeros(self.n)
+
+    def place(self, sig, at, gain=1.0, pan=0.0):
+        i = int(round(at * SR))
+        j = min(self.n, i + len(sig))
+        if i >= self.n:
+            return
+        gl = gain * np.cos((pan + 1) * np.pi / 4)
+        gr = gain * np.sin((pan + 1) * np.pi / 4)
+        self.L[i:j] += sig[: j - i] * gl
+        self.R[i:j] += sig[: j - i] * gr
+
+
+def sting_wave():
+    """波次开始：1.5 秒上扬（噪声扫频 + 上行锯齿和弦）→ 一记重拍。"""
+    tr = Sting(2.6)
+    n = int(1.5 * SR)
+    t = np.arange(n) / SR
+    noise = rng.standard_normal(n)
+    sweep = np.zeros(n)
+    for k in range(12):
+        a, b = k * n // 12, (k + 1) * n // 12
+        sweep[a:b] = hp(noise[a:b], 400 + 600 * k)
+    tr.place(sweep * (t / 1.5) ** 2 * 0.4, 0.0)
+    riser = sum(saw(hz(m) * 1.0, n) for m in (62, 65, 69)) / 3.0
+    tr.place(lp(riser, 3000) * (t / 1.5) ** 1.5 * 0.35, 0.0)
+    tr.place(kick(), 1.5, 1.0)
+    tr.place(crash(), 1.5, 0.5)
+    tr.place(stab(triad(50, "m"), 0.6), 1.5, 0.35)
+    return tr
+
+
+def sting_clear():
+    """清场：小调九和弦的琶音上行，落在 D 上，带延迟。"""
+    tr = Sting(3.5)
+    for i, m in enumerate([62, 65, 69, 72, 74, 77, 81]):
+        tr.place(pluck(m, 0.5, 5000), i * BEAT / 4, 0.3, -0.5 + i * 0.16)
+    tr.place(pad([62, 65, 69, 76], 2.6, 2400), 7 * BEAT / 4, 0.4)
+    L, R = delay(tr.L, tr.R, 0.75, 0.3, 0.35)
+    tr.L, tr.R = L, R
+    return tr
+
+
 def write(name, tr, peak_level=0.89):
     L, R = tr.L, tr.R
     m = max(np.abs(L).max(), np.abs(R).max(), 1e-6)
@@ -360,10 +442,12 @@ def write(name, tr, peak_level=0.89):
     ogg = os.path.join(OUT, name + ".ogg")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-c:a", "libvorbis", "-q:a", "6", ogg], check=True)
     os.remove(wav)
-    print("%-8s %.1fs -> %s" % (name, LENGTH, ogg))
+    print("%-8s %.1fs -> %s" % (name, tr.n / SR, ogg))
 
 
 if __name__ == "__main__":
     write("explore", explore(), 0.8)
     write("combat", combat())
     write("peak", peak(), 0.75)
+    write("sting_wave", sting_wave(), 0.85)
+    write("sting_clear", sting_clear(), 0.8)

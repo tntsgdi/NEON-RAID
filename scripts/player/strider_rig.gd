@@ -14,7 +14,9 @@ const EDGE := Color(0.3, 1.1, 1.25)
 const EDGE_BACK := Color(0.13, 0.42, 0.5)
 const FILL := Color(0.15, 0.18, 0.24)
 const FILL_BACK := Color(0.09, 0.11, 0.15)
+## 出刀 / 冲刺时刀刃发强光；平时只是亮青色，不盖住机身和腿
 const BLADE := Color(1.05, 1.9, 2.1)
+const BLADE_REST := Color(0.55, 1.15, 1.3)
 
 const HIP_H := 21.0
 const THIGH := 13.0
@@ -72,7 +74,10 @@ func update(m: Dictionary, delta: float) -> void:
 	if m.facing != _facing:
 		_mirror_cables()
 		_facing = m.facing
-	turn = move_toward(turn, float(m.facing), delta * 11.0)
+	if m.speed_ratio > 0.4 and m.state == "run":
+		turn = float(m.facing)
+	else:
+		turn = move_toward(turn, float(m.facing), delta / 0.12 * 2.0)
 	var state: String = m.state
 	var ratio: float = m.speed_ratio
 
@@ -185,8 +190,10 @@ func update(m: Dictionary, delta: float) -> void:
 			var h := shoulder + d * ARM_LEN
 			_shapes.append(["line", h, h + d * BLADE_LEN, 3.0, Color(0.4, 1.5, 1.8, 0.07 + 0.05 * i)])
 	_prev_blade = _blade_angle
-	_shapes.append(["line", hand, tip, 4.0, Color(0.25, 0.9, 1.0, 0.25)])
-	_shapes.append(["line", hand, tip, 2.0, BLADE])
+	var hot: bool = m.slash_step >= 0 or state == "dash"
+	if hot:
+		_shapes.append(["line", hand, tip, 4.0, Color(0.25, 0.9, 1.0, 0.25)])
+	_shapes.append(["line", hand, tip, 2.0, BLADE if hot else BLADE_REST])
 	_shapes.append(["dot", shoulder, 2.0, EDGE])
 	queue_redraw()
 
@@ -247,11 +254,11 @@ func _leg(hip: Vector2, toe: Vector2, meta_tilt: float) -> Array:
 
 
 func _add_leg(l: Array, fill: Color, edge: Color) -> void:
-	_shapes.append(["line", l[0], l[1], 5.0, edge])
-	_shapes.append(["line", l[0], l[1], 3.0, fill])
-	_shapes.append(["line", l[1], l[2], 4.0, edge])
-	_shapes.append(["line", l[1], l[2], 2.2, fill])
-	_shapes.append(["line", l[2], l[3], 3.0, edge])
+	_shapes.append(["line", l[0], l[1], 6.0, edge])
+	_shapes.append(["line", l[0], l[1], 3.6, fill])
+	_shapes.append(["line", l[1], l[2], 5.0, edge])
+	_shapes.append(["line", l[1], l[2], 2.8, fill])
+	_shapes.append(["line", l[2], l[3], 3.5, edge])
 	_shapes.append(["dot", l[1], 2.6, edge])
 	_shapes.append(["dot", l[2], 2.0, fill])
 	_shapes.append(["line", l[3], l[3] + Vector2(3, 0), 2.0, edge])
@@ -321,6 +328,11 @@ func muzzle() -> Vector2:
 ## 刀身根部与刀尖的全局坐标（刀光拖尾用）
 func blade_points() -> Array:
 	return _blade_pts
+
+
+## 当前这一帧要画的图形（倒影用）
+func shapes() -> Array:
+	return _shapes
 
 
 ## 冲刺残影：把当前这一帧的图形复制一份，慢慢淡出

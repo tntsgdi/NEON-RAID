@@ -59,7 +59,7 @@ static func debris(parent: Node, pos: Vector2, dir: Vector2, amount: int, color:
 
 ## 闪光：一个迅速缩小的高亮光点（枪口火光、命中闪光）
 static func flash(parent: Node, pos: Vector2, color: Color, radius: float) -> void:
-	if parent == null:
+	if parent == null or Tuning.v.flash_fx < 0.5:
 		return
 	var f := FxFlash.new()
 	f.position = pos

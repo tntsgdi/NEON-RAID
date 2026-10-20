@@ -39,9 +39,9 @@ SFX = {
     # 战斗
     "shot": {"cat": "whoosh", "layers": [("@click", 0.0, 0.01, -4), ("SCIWeap_Shot Pulse YR 05", 0.0, 0.45, 0)]},
     "enemy_shot": {"cat": "whoosh", "layers": [("Blast Laser 4", 0.0, 0.5, 0)]},
-    "deflect": {"cat": "hit", "layers": [("@click", 0.0, 0.01, 0), ("Machete_Hit_Ring_Fienup_001", 0.0, 0.7, 0)]},
+    "deflect": {"cat": "hit", "lp": 4000, "layers": [("@click", 0.0, 0.01, 0), ("Machete_Hit_Ring_Fienup_001", 0.0, 0.7, 0), ("@ring", 0.0, 0.3, -6)]},
     # 神经超频：重音就在开头（重击），然后低音往下坠，像时间被拖慢
-    "overclock": {"cat": "hit", "layers": [("PUNCH_DESIGNED_LIGHT_78", 0.0, 0.4, 0), ("Bass Drop & Downer Fast 16", 0.0, 0.9, -3)]},
+    "overclock": {"cat": "hit", "layers": [("PUNCH_DESIGNED_LIGHT_78", 0.0, 0.4, 0), ("Bass Drop & Downer Fast 16", 0.0, 0.9, -14), ("@ring", 0.0, 0.5, -3)]},
     "hurt": {"cat": "hit", "layers": [("PUNCH_PERCUSSIVE_HEAVY_06", 0.0, 0.4, 0), ("Broken_Robot_Morphing_Short_Static_Pitch_Confused_Glitch_02", 0.0, 0.4, -6)]},
     "charge": {"cat": "ui", "layers": [("electricity_surge_discharge_electrical_arc_crackling_002_01", 0.0, 0.5, -2)]},
     "shield_block": {"cat": "hit", "layers": [("cinematic_metal_impact_050", 0.0, 0.4, 0)]},
@@ -98,9 +98,9 @@ def build(recipe):
         mix = lowpass(mix, recipe["lp"])
     fade = min(len(mix), int(0.04 * RATE))
     mix[-fade:] *= np.linspace(1.0, 0.0, fade)
-    # 按类别统一响度：看开头 250 ms 的 RMS；峰值不超过 -1 dBFS
+    # 按类别统一响度：取开头 250 ms 和整段 RMS 中较大的（长尾巴的低频也算进去）；峰值不超过 -1 dBFS
     head = mix[: int(0.25 * RATE)]
-    rms = np.sqrt(np.mean(head ** 2)) + 1e-9
+    rms = max(np.sqrt(np.mean(head ** 2)), np.sqrt(np.mean(mix ** 2))) + 1e-9
     mix = mix * (10 ** (CAT_RMS[recipe["cat"]] / 20) / rms)
     peak = np.abs(mix).max()
     if peak > 10 ** (-1 / 20):

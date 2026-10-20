@@ -24,6 +24,10 @@ static func build(parent: Node, rects: Array) -> void:
 static func draw(ci: CanvasItem, rects: Array) -> void:
 	for r in rects:
 		ci.draw_rect(r, FILL)
+		# 湿地面：顶面下方一条渐隐的反光
+		if r.size.x > 90.0:
+			for i in 6:
+				ci.draw_rect(Rect2(r.position.x, r.position.y + 2 + i * 3, r.size.x, 3), Color(0.35, 0.8, 1.0, 0.05 * (6 - i) / 6.0))
 		ci.draw_rect(r, EDGE, false, 1.0)
 		ci.draw_line(r.position + Vector2(0, 0.5), Vector2(r.end.x, r.position.y + 0.5), TOP, 2.0)
 		# 地面每 32 像素一道发光刻线：跑起来眼睛有东西可以参照速度

@@ -9,14 +9,14 @@ var _t := 0.0
 
 func _process(delta: float) -> void:
 	_t += delta
-	if _t >= 0.08:
+	if _t >= 0.05:
 		queue_free()
 		return
 	queue_redraw()
 
 
 func _draw() -> void:
-	var k := 1.0 - _t / 0.08
+	var k := 1.0 - _t / 0.05
 	var r := radius * (0.4 + 0.6 * k)
 	draw_circle(Vector2.ZERO, r * 0.25, Color(color.r * 0.7, color.g * 0.7, color.b * 0.7))
 	draw_circle(Vector2.ZERO, r * 0.7, Color(color, 0.25 * k))

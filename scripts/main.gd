@@ -30,6 +30,7 @@ var _post: ShaderMaterial
 var _ca := 0.0
 var _shock_t := 1.0
 var _rain: CPUParticles2D
+var _splash: CPUParticles2D
 var _foreground: Node2D
 
 
@@ -68,6 +69,13 @@ func _ready() -> void:
 	world.add_child(player)
 	_rain = _make_rain()
 	world.add_child(_rain)
+	_splash = _make_splash()
+	world.add_child(_splash)
+	var refl := Reflection.new()
+	refl.rig = player.rig
+	refl.body = player
+	refl.z_index = -2
+	world.add_child(refl)
 	_foreground = CityBackdrop.make_foreground()
 	world.add_child(_foreground)
 	Neon.add_light(player, Neon.CYAN, 0.35, 2.0, Vector2(0, -18))
@@ -115,14 +123,14 @@ func _setup_glow() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_CANVAS
 	e.glow_enabled = true
-	e.glow_intensity = 0.55
+	e.glow_intensity = 0.42
 	e.glow_strength = 1.0
 	e.glow_bloom = 0.0
 	e.glow_hdr_threshold = 1.0
 	e.glow_hdr_scale = 2.0
 	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	for lv in 7:
-		e.set_glow_level(lv, lv in [1, 2, 3, 4])
+		e.set_glow_level(lv, lv in [2, 3, 4])
 	env.environment = e
 	add_child(env)
 
@@ -147,6 +155,26 @@ func _make_rain() -> CPUParticles2D:
 	r.local_coords = false
 	r.z_index = -5
 	return r
+
+
+## 雨滴落地的小水花：沿着镜头下方的地面一排随机溅起
+func _make_splash() -> CPUParticles2D:
+	var p := CPUParticles2D.new()
+	p.amount = 60
+	p.lifetime = 0.25
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(380, 0.5)
+	p.direction = Vector2(0, -1)
+	p.spread = 50.0
+	p.gravity = Vector2(0, 500)
+	p.initial_velocity_min = 30.0
+	p.initial_velocity_max = 70.0
+	p.scale_amount_min = 0.8
+	p.scale_amount_max = 1.4
+	p.color = Color(0.55, 0.85, 1.0, 0.35)
+	p.local_coords = false
+	p.z_index = 3
+	return p
 
 
 ## 冲击波（招架、弹反、打碎时）：world_pos 是世界坐标
@@ -316,7 +344,7 @@ func _process(delta: float) -> void:
 	var real := delta / maxf(Engine.time_scale, 0.0001)
 	_ca = move_toward(_ca, 2.5 if TimeFx.slowmo_active() else 0.0, real * 30.0)
 	_shock_t = minf(_shock_t + real * 2.2, 1.0)
-	_post.set_shader_parameter("ca", _ca)
+	_post.set_shader_parameter("ca", _ca * Tuning.v.aberration)
 	_post.set_shader_parameter("shock_t", _shock_t)
 	var vp := get_viewport().get_visible_rect().size
 	_post.set_shader_parameter("aspect", vp.x / maxf(vp.y, 1.0))
@@ -348,3 +376,4 @@ func _physics_process(delta: float) -> void:
 		_shake = move_toward(_shake, 0.0, 45.0 * delta)
 	camera.offset = jitter + _kick
 	_rain.global_position = camera.global_position + Vector2(60, -230)
+	_splash.global_position = Vector2(camera.global_position.x, 0.0)

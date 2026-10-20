@@ -585,14 +585,19 @@ func hurt_rect() -> Rect2:
 	return Rect2(global_position + Vector2(-_rect.size.x * 0.5, -_rect.size.y), _rect.size)
 
 
+## 冲刺只有前 dash_iframes 秒无敌，后段是可以被打中的收招
+func dash_safe() -> bool:
+	return state == State.DASH and Tuning.v.dash_time - _dash_left <= Tuning.v.dash_iframes
+
+
 func invulnerable() -> bool:
-	return state == State.DASH or _iframes > 0.0
+	return dash_safe() or _iframes > 0.0
 
 
 ## 敌弹碰到机体时调用；返回 true 表示吃下这发（子弹消失）
 func take_bullet(b: Node) -> bool:
 	var T: Dictionary = Tuning.v
-	if state == State.DASH:
+	if dash_safe():
 		_try_perfect_dodge(T)
 		return false
 	if _iframes > 0.0:
@@ -603,7 +608,7 @@ func take_bullet(b: Node) -> bool:
 
 ## 被冲锋机撞到；冲刺中穿过去则可能触发精准闪避
 func melee_hit(dir: Vector2, dmg: int) -> void:
-	if state == State.DASH:
+	if dash_safe():
 		_try_perfect_dodge(Tuning.v)
 		return
 	hurt(dir, dmg)
@@ -677,7 +682,7 @@ func _update_facing() -> void:
 func _animate(delta: float, T: Dictionary) -> void:
 	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
 	var t: float = rig.turn
-	rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.12) * _squash.x, _squash.y)
+	rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.3) * _squash.x, _squash.y)
 	var ratio: float = absf(velocity.x) / T.run_speed
 	var mode := "idle"
 	match state:
