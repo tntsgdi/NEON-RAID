@@ -56,5 +56,7 @@ func _grab(sheet: Image, i: int) -> void:
 	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
 	img.convert(Image.FORMAT_RGBA8)
+	# HDR 2D 下读回的是线性颜色，转回 sRGB 才和屏幕上看到的一样
+	img.linear_to_srgb()
 	img.resize(960, 540, Image.INTERPOLATE_BILINEAR)
 	sheet.blit_rect(img, Rect2i(0, 0, 960, 540), Vector2i(i * 960, 0))

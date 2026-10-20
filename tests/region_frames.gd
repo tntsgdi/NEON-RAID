@@ -40,6 +40,8 @@ func _run() -> void:
 			await RenderingServer.frame_post_draw
 			var img := root.get_texture().get_image()
 			img.convert(Image.FORMAT_RGBA8)
+			# HDR 2D 下读回的是线性颜色，转回 sRGB 才和屏幕上看到的一样
+			img.linear_to_srgb()
 			img.resize(W, H, Image.INTERPOLATE_BILINEAR)
 			sheet.blit_rect(img, Rect2i(0, 0, W, H), Vector2i(k * W, i * H))
 		main.controller.input = load("res://scripts/player/device_input.gd").new()

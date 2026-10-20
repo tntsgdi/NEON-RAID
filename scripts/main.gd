@@ -159,6 +159,8 @@ func _ready() -> void:
 	ui.add_child(settings_panel)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
+	# 正式像素美术：默认 640×360 原生像素渲染（整数倍放大）；F3 切回高清平滑渲染做对比
+	set_pixel_mode(true)
 	# 测试直接进手感测试场；正式运行：背后摆着区域 001，先打开标题菜单
 	if Tuning.is_test_run():
 		load_level("range")

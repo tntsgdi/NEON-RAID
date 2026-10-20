@@ -35,18 +35,18 @@ const SLASH := [
 	{"from": -165.0, "to": 195.0, "over": 20.0},
 ]
 
-## 机身（胸甲）外形：参考图里圆润的胸甲（以髋部为原点、面朝右）
-const HULL := [Vector2(-12, -5), Vector2(-10, -12), Vector2(-2, -16), Vector2(8, -14), Vector2(13, -7), Vector2(8, -1), Vector2(-7, -1)]
+## 机身外形：紧凑楔形（后背高厚、机鼻低尖），以髋部为原点、面朝右；和像素贴图 hull 对齐
+const HULL := [Vector2(-11, -8), Vector2(-8, -13), Vector2(2, -14), Vector2(10, -11), Vector2(17.5, -4), Vector2(13, -1.5), Vector2(1, 0.5), Vector2(-9, -1.5)]
 ## 胸口的核心环
-const CORE := Vector2(2, -8)
+const CORE := Vector2(6, -5)
 ## 脖子根（在机身上）；头是横放的传感器盒，以脖子顶为原点
-const NECK := Vector2(6, -14)
+const NECK := Vector2(4, -13)
 const NECK_LEN := 5.0
 const HEAD := [Vector2(-6, -3.5), Vector2(8, -3.5), Vector2(10, -0.5), Vector2(8, 2), Vector2(-6, 2)]
 const EYE := [Vector2(5, -2), Vector2(9.5, -1.2), Vector2(9.5, 0.6), Vector2(5, 0.6)]
-const SHOULDER := Vector2(8, -6)
+const SHOULDER := Vector2(10, -5)
 const TURRET := Vector2(-6, -13)
-const CABLE_ANCHORS := [Vector2(-10, -12), Vector2(-11, -8)]
+const CABLE_ANCHORS := [Vector2(-10, -10), Vector2(-10, -6)]
 ## 持刀三档（刀相对机体的角度，0 = 正前方，90 = 正下方）：
 ##   走路 / 待机 竖在身前、刀尖点地；跑步 向前平举；疾驰 甩到身后拖着
 const HOLD_WALK := 55.0
@@ -55,6 +55,8 @@ const HOLD_SPRINT := 165.0
 ## 转身时长（秒）：慢—快—慢的缓动，像动物转身先收身体再甩过去
 const TURN_TIME := 0.14
 const CABLE_POINTS := 7
+## 像素部件图集目录（tools/pixel/build_r0.py 生成）
+const PART_DIR := "res://assets/sprites/r0/"
 const CABLE_SEG := 4.0
 
 var hull_angle := 12.0
@@ -297,72 +299,50 @@ func update(m: Dictionary, delta: float) -> void:
 		"muzzle": tf * barrel_end,
 	}
 
-	# ---- 收集要画的图形
+	# ---- 收集要画的部件（正式像素贴图，见 tools/pixel/build_r0.py）
 	_shapes.clear()
-	_add_leg(legs[1], FILL_BACK, EDGE_BACK)
-	for c in _cables:
-		_shapes.append(["cable", c[0].duplicate()])
-	var hull := PackedVector2Array()
-	for p in HULL:
-		hull.append(pelvis + p.rotated(rot))
-	_shapes.append(["poly", hull, FILL, EDGE])
-	_shapes.append(["line", neck_base, head_pos, 3.0, EDGE])
-	_shapes.append(["line", neck_base, head_pos, 1.4, FILL])
-	var head := PackedVector2Array()
-	for p in HEAD:
-		head.append(head_pos + p.rotated(hrot))
-	_shapes.append(["poly", head, FILL, EDGE])
-	var visor := PackedVector2Array()
-	for p in EYE:
-		visor.append(head_pos + p.rotated(hrot))
-	# glow < 0：没有意识的空机体，目镜和核心变暗
 	var g: float = maxf(m.glow, 0.0)
 	_flinch = maxf(_flinch - delta, 0.0)
-	var eye: Color = CYAN.lerp(Color.WHITE, g) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
-	if _flinch > 0.0:
-		eye = eye.lerp(Neon.RED_HOT, _flinch / 0.25)
 	_wake = maxf(_wake - delta, 0.0)
+	# glow < 0：没有意识的空机体，目镜和核心变暗
+	var eye: Color = Color(0.6, 2.0, 2.3).lerp(Color(2.4, 2.6, 2.7), g) if m.glow >= 0.0 else Color(0.25, 0.35, 0.4)
+	if _flinch > 0.0:
+		eye = eye.lerp(Color(2.6, 0.5, 0.6), _flinch / 0.25)
 	if _wake > 0.0:
-		eye = Color(0.1, 0.3, 0.35).lerp(eye, pow(1.0 - _wake / 0.35, 2.0))
-	_shapes.append(["poly", visor, eye, CYAN if m.glow >= 0.0 else EDGE_BACK])
+		eye = Color(0.25, 0.35, 0.4).lerp(eye, pow(1.0 - _wake / 0.35, 2.0))
+	var core: Color = core_color(m.get("hp_k", 1.0), m.time) if m.glow >= 0.0 else Color(0.3, 0.4, 0.45)
+	# 后腿（压暗一阶的贴图）
+	_add_leg(legs[1], "_b")
+	for c in _cables:
+		_shapes.append(["cable", c[0].duplicate()])
+	_part("turret", mount, tdir.angle())
+	_part("hull", pelvis, rot)
+	_part("core", pelvis + CORE.rotated(rot), 0.0, core.lerp(Color.WHITE, g * 0.4))
+	_part("neck", neck_base, (head_pos - neck_base).angle())
+	_part("head", head_pos, hrot)
+	_part("eye", head_pos + Vector2(4, -2).rotated(hrot), hrot, eye)
 	# 待机：目镜上一道亮光来回扫（机器在"看"）
 	if state == "idle" and m.glow >= 0.0:
 		var u := 0.5 + 0.5 * sin(m.time * 1.7)
-		var a0: Vector2 = EYE[3].lerp(EYE[1], u)
-		_shapes.append(["dot", head_pos + a0.rotated(hrot), 1.1, Color(2.4, 2.6, 2.6, 0.9)])
-	# 核心灯：血量的颜色（玩家不用看 HUD 也知道自己还剩多少血）
-	var core: Color = core_color(m.get("hp_k", 1.0), m.time) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
-	var core_p := pelvis + CORE.rotated(rot)
-	_shapes.append(["dot", core_p, 4.5 + g * 2.0, Color(core.r, core.g, core.b, 0.16)])
-	_shapes.append(["ring", core_p, 3.0, core])
-	_shapes.append(["dot", core_p, 1.3 + g, core.lerp(Color.WHITE, g * 0.5)])
+		_shapes.append(["px", head_pos + Vector2(4.5 + 4.0 * u, -2).rotated(hrot), Color(2.6, 2.8, 2.8)])
 	if state == "kneel":
 		_shapes.append(["ring", pelvis + Vector2(0, -4), 20.0 + 3.0 * sin(m.time * 3.0), Color(0.4, 1.4, 1.7, 0.35 + 0.2 * sin(m.time * 3.0))])
-	_shapes.append(["line", mount, barrel_end, 3.5, Color(0.35, 0.4, 0.48)])
-	_shapes.append(["line", mount, barrel_end, 1.0, EDGE])
-	_shapes.append(["dot", mount, 2.5, FILL])
-	_add_leg(legs[0], FILL, EDGE)
-	var elbow := shoulder + bdir.rotated(0.9) * ARM_LEN * 0.7
-	_shapes.append(["line", shoulder, elbow, 3.2, EDGE])
-	_shapes.append(["line", elbow, hand, 3.0, EDGE])
-	_shapes.append(["dot", elbow, 1.6, FILL])
+	_add_leg(legs[0], "")
 	# 刀残影：挥得越快，前一帧到这一帧之间留下的半透明刀身越多
 	var swing := angle_difference(deg_to_rad(_prev_blade), deg_to_rad(_blade_angle))
 	if absf(swing) > deg_to_rad(6.0):
-		for i in 4:
-			var a := deg_to_rad(_prev_blade) + swing * (float(i) + 0.5) / 4.0
-			var d := Vector2.from_angle(a)
-			var h := shoulder + d * ARM_LEN
-			_shapes.append(["line", h, h + d * BLADE_LEN, 3.0, Color(0.4, 1.5, 1.8, 0.07 + 0.05 * i)])
+		for i in 3:
+			var a := deg_to_rad(_prev_blade) + swing * (float(i) + 0.5) / 3.0
+			_part("blade", shoulder + Vector2.from_angle(a) * ARM_LEN, a, Color(0.5, 1.6, 1.9, 0.15 + 0.12 * i))
 	_prev_blade = _blade_angle
 	var hot: bool = m.slash_step >= 0 or state == "dash"
-	# 连击越往后刀越亮：第一刀青、第二刀更亮、第三刀接近白热，光晕也更宽
+	# 连击越往后刀越亮：第一刀青、第二刀更亮、第三刀接近白热
 	var heat := clampf(float(m.slash_step), 0.0, 2.0) / 2.0 if m.slash_step >= 0 else 0.0
+	_part("arm", shoulder, bdir.angle())
+	_part("blade", hand, bdir.angle())
 	if hot:
-		_shapes.append(["line", hand, tip, 4.0 + heat * 3.0, Color(0.25, 0.9, 1.0, 0.25 + heat * 0.2)])
-	_shapes.append(["line", hand, tip, 2.0, BLADE.lerp(Color(2.6, 2.8, 2.9), heat) if hot else BLADE_REST])
-	_shapes.append(["dot", shoulder, 3.2, FILL])
-	_shapes.append(["ring", shoulder, 3.2, EDGE])
+		_part("blade_glow", hand, bdir.angle(), Color(0.6, 2.0, 2.3).lerp(Color(2.8, 3.0, 3.0), heat))
+	_part("shoulder", shoulder, rot)
 	queue_redraw()
 
 
@@ -430,15 +410,18 @@ func _leg(hip: Vector2, toe: Vector2, meta_tilt: float) -> Array:
 	return [hip, knee, ankle, toe]
 
 
-func _add_leg(l: Array, fill: Color, edge: Color) -> void:
-	_shapes.append(["line", l[0], l[1], 6.0, edge])
-	_shapes.append(["line", l[0], l[1], 3.6, fill])
-	_shapes.append(["line", l[1], l[2], 5.0, edge])
-	_shapes.append(["line", l[1], l[2], 2.8, fill])
-	_shapes.append(["line", l[2], l[3], 3.5, edge])
-	_shapes.append(["dot", l[1], 2.6, edge])
-	_shapes.append(["dot", l[2], 2.0, fill])
-	_shapes.append(["line", l[3], l[3] + Vector2(3, 0), 2.0, edge])
+## 一条腿：大腿、膝、小腿、踝、跖骨、脚爪（suffix "_b" = 后腿用的压暗贴图）
+func _add_leg(l: Array, suffix: String) -> void:
+	_part("thigh" + suffix, l[0], (l[1] - l[0]).angle())
+	_part("shin" + suffix, l[1], (l[2] - l[1]).angle())
+	_part("meta" + suffix, l[2], (l[3] - l[2]).angle())
+	_part("foot" + suffix, l[3], 0.0)
+	_part("ankle" + suffix, l[2], 0.0)
+	_part("knee" + suffix, l[1], 0.0)
+
+
+func _part(name: String, pos: Vector2, angle: float, mod := Color.WHITE) -> void:
+	_shapes.append(["part", PART_DIR + name, pos, angle, mod])
 
 
 ## 挥刀：第一刀 0–15% 回拉蓄力，然后劈过去并挥过头，最后收回到终点。
@@ -570,8 +553,23 @@ func _draw() -> void:
 
 
 static func draw_shapes(ci: CanvasItem, shapes: Array) -> void:
+	# 像素部件：抵消 ci 自身的旋转和缩放，在不旋转的世界像素格上贴预旋转好的图（见 PixelPart）
+	var gx := ci.get_global_transform()
+	var flip := gx.determinant() < 0.0
+	var rho := (gx * Transform2D(0.0, Vector2(-1, 1), 0.0, Vector2.ZERO)).get_rotation() if flip else gx.get_rotation()
+	var inv := gx.affine_inverse()
 	for s in shapes:
 		match s[0]:
+			"part":
+				var part := PixelPart.get_part(s[1])
+				var a: float = (s[3] - rho) if flip else (s[3] + rho)
+				part.draw(ci, inv, gx * s[2], a, flip, s[4])
+			"px":
+				# 单个发光像素
+				var wp: Vector2 = (gx * s[1]).round()
+				ci.draw_set_transform_matrix(inv)
+				ci.draw_rect(Rect2(wp, Vector2.ONE), s[2])
+				ci.draw_set_transform_matrix(Transform2D.IDENTITY)
 			"poly":
 				ci.draw_colored_polygon(s[1], s[2])
 				var outline: PackedVector2Array = s[1].duplicate()
@@ -586,12 +584,16 @@ static func draw_shapes(ci: CanvasItem, shapes: Array) -> void:
 			"ring":
 				ci.draw_arc(s[1], s[2], 0.0, TAU, 32, s[3], 1.5, true)
 			"cable":
+				# 线缆：世界像素格上 1 像素宽的暗色线（不抗锯齿），末端一个 2×2 的发光插头
 				var pts: Array = s[1]
+				ci.draw_set_transform_matrix(inv)
+				var prev: Vector2 = (gx * pts[0]).round()
 				for i in range(1, pts.size()):
-					var k := 1.0 - float(i) / pts.size()
-					ci.draw_line(pts[i - 1], pts[i], Color(0.25, 0.3, 0.38, 0.9), 1.4, true)
-					ci.draw_line(pts[i - 1], pts[i], Color(0.4, 1.6, 1.9, 0.15 + 0.4 * k), 0.6, true)
-				ci.draw_circle(pts[-1], 1.6, Color(1.0, 2.2, 2.4))
+					var cur: Vector2 = (gx * pts[i]).round()
+					ci.draw_line(prev + Vector2(0.5, 0.5), cur + Vector2(0.5, 0.5), Color(0.17, 0.2, 0.25), 1.0, false)
+					prev = cur
+				ci.draw_rect(Rect2(prev - Vector2(0, 0), Vector2(2, 2)), Color(0.8, 2.2, 2.5))
+				ci.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
 static func lerp_angle_deg(a: float, b: float, t: float) -> float:

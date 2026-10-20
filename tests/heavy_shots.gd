@@ -57,6 +57,8 @@ func _run() -> void:
 		await RenderingServer.frame_post_draw
 		var img := root.get_texture().get_image()
 		img.convert(Image.FORMAT_RGBA8)
+		# HDR 2D 下读回的是线性颜色，转回 sRGB 才和屏幕上看到的一样
+		img.linear_to_srgb()
 		var vp := img.get_size()
 		var crop := img.get_region(Rect2i(vp.x / 2 - vp.x / 8, vp.y / 2 - vp.y / 6, vp.x / 4, vp.y / 3))
 		crop.resize(300, 220, Image.INTERPOLATE_BILINEAR)

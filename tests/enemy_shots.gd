@@ -30,6 +30,8 @@ func _run() -> void:
 		await RenderingServer.frame_post_draw
 		var img := root.get_texture().get_image()
 		img.convert(Image.FORMAT_RGBA8)
+		# HDR 2D 下读回的是线性颜色，转回 sRGB 才和屏幕上看到的一样
+		img.linear_to_srgb()
 		var scale := float(img.get_width()) / 640.0
 		var at: Vector2 = who.get_global_transform_with_canvas().origin * scale + Vector2(0, -18 * scale) if is_instance_valid(who) else Vector2(960, 540)
 		var c := Vector2i(at) - cell / 2
