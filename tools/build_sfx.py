@@ -45,6 +45,8 @@ SFX = {
     "hurt": {"cat": "hit", "layers": [("PUNCH_PERCUSSIVE_HEAVY_06", 0.0, 0.4, 0), ("Broken_Robot_Morphing_Short_Static_Pitch_Confused_Glitch_02", 0.0, 0.4, -6)]},
     "charge": {"cat": "ui", "layers": [("electricity_surge_discharge_electrical_arc_crackling_002_01", 0.0, 0.5, -2)]},
     "shield_block": {"cat": "hit", "layers": [("cinematic_metal_impact_050", 0.0, 0.4, 0)]},
+    # 夺壳：一声上扬的剑鸣 + 短促的破空（意识射出去）
+    "possess": {"cat": "hit", "layers": [("@click", 0.0, 0.01, -4), ("@ring", 0.0, 0.35, 0), ("WHSH_InsJ_Whooshing_Low_Double_01-01", 0.04, 0.19, -5)]},
     # 疾驰：进档时的一声风啸；wind 是循环用的风声（下面单独做无缝循环）
     "sprint": {"cat": "whoosh", "lp": 6000, "layers": [("WINDDsgn_Wind, Rush, Whoosh, Long x5 01", 0.02, 0.6, 0), ("@ring", 0.0, 0.3, -12)]},
 }

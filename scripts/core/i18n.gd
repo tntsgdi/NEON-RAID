@@ -13,15 +13,21 @@ const STRINGS := {
 	"HUD_BEST": ["最佳 %s", "BEST %s"],
 	"HUD_SPEED": ["速度 %d", "SPEED %d"],
 	"HUD_FINISH": ["完成  %s", "CLEAR  %s"],
-	"TIP_RANGE": ["按住方向加速到疾跑 · 空格跳 · Shift 冲刺 · C 滑铲 · 右键挥刀 · 左键射击", "Hold a direction to sprint · SPACE jump · SHIFT dash · C slide · RMB slash · LMB shoot"],
+	"TIP_RANGE": ["不按 Shift 是走路，按住 Shift 跑 · 空格跳 · L（或轻点 Shift）冲刺 · C 滑铲 · J 挥刀 · K 射击 · E 夺壳", "Walk by default, hold SHIFT to run · SPACE jump · L (or tap SHIFT) dash · C slide · J slash · K shoot · E possess"],
+	"TIP_POSSESS": ["白色准星 = 可以夺壳：按 E 把意识射过去（手柄 Y）", "White reticle = possessable: press E to jump your mind into it (pad Y)"],
+	"TIP_SHELL_DRONE": ["侦察机：WASD 自由飞行 · K 连射 · J 撞击 · L 冲刺 · 对准别的机体按 E 再换", "Drone: WASD to fly · K rapid fire · J ram · L dash · E to hop again"],
+	"TIP_SHELL_BOT": ["安保机：K 主武器 · J 撞击 · L 小冲刺 · 空格跳 · 对准别的机体按 E 再换", "Security bot: K main weapon · J bash · L hop · SPACE jump · E to hop again"],
+	"TIP_WISP": ["机体被毁！1.5 秒内飞向附近的机体按 E（或直接碰到它）", "Shell destroyed! Fly to a nearby shell and press E within 1.5s (or touch it)"],
+	"POS_LABEL": ["夺壳训练场 · 夺取崖边的失控侦察机飞过深渊", "POSSESSION RANGE · Take a wild drone across the chasm"],
+	"POS_LABEL_FAR": ["夺壳训练场 · 对岸的敌人都能夺", "POSSESSION RANGE · Every enemy here can be taken"],
 	"TIP_WALL": ["贴住墙、按住朝墙的方向，连按空格就能沿墙往上爬", "Against a wall, hold toward it and tap SPACE to climb"],
 	"TIP_ARENA": ["敌人开火前会拉出红色瞄准线：看准时机冲刺穿过子弹，或者右键把子弹砍回去", "Red aim lines warn of shots: dash through the bullet, or slash it back with RMB"],
 	"TIP_RUSHER": ["冲锋机压低身体就要冲过来：冲刺穿过它，或者正面一刀招架", "A crouching rusher is about to charge: dash through, or slash it head-on to parry"],
 	"TIP_SHIELD": ["盾兵正面挡子弹：绕到背后，或者跳起来下劈（空中按住 S + 右键）", "Shields block shots from the front: get behind, or down-slash from above (S + RMB in the air)"],
 	"TIP_OVERCLOCK": ["神经超频！慢动作期间，下一击伤害翻倍", "NEURAL OVERCLOCK! Your next hit deals double damage"],
 	"HUD_HINT": [
-		"Esc 设置   R 重来",
-		"ESC SETTINGS   R RESTART",
+		"Esc 设置   R 重来   F4 切换场地",
+		"ESC SETTINGS   R RESTART   F4 SWITCH LEVEL",
 	],
 	"HUD_MODE_HD": ["高清渲染", "HD render"],
 	"HUD_MODE_PIXEL": ["像素渲染 640×360", "Pixel render 640x360"],
@@ -31,6 +37,7 @@ const STRINGS := {
 	"TUNE_SAVED": ["已导出：%s", "Saved: %s"],
 	"TUNE_TEST": ["测试运行，不写文件", "Test run, nothing written"],
 	"TUNE_run_speed": ["疾跑速度", "Run speed"],
+	"TUNE_walk_speed": ["走路速度", "Walk speed"],
 	"TUNE_sprint_speed": ["疾驰速度", "Sprint speed"],
 	"TUNE_sprint_delay": ["持续跑多久进疾驰", "Time to sprint"],
 	"TUNE_sprint_max": ["疾驰 5 秒后的上限", "Sprint cap after 5s"],
@@ -75,9 +82,9 @@ const STRINGS := {
 	"SET_music": ["音乐音量", "Music volume"],
 	"SET_sfx": ["音效音量", "SFX volume"],
 	"SET_HINT": ["Esc / 手柄 Start 关闭 · 设置会自动保存
-F4 切换场地（手感测试场 / 战斗训练场） · F2 English
+F4 切换场地（手感测试场 / 战斗训练场 / 夺壳训练场） · F2 English
 开发用：F1 调参 · F3 像素/高清", "Esc / Start to close · saved automatically
-F4 switch level (feel range / combat arena) · F2 中文
+F4 switch level (feel range / combat arena / possession range) · F2 中文
 Dev: F1 tuning · F3 pixel/HD"],
 	"HUD_HINT_PAD": ["Start 设置   Back 重来", "START SETTINGS   BACK RESTART"],
 	"RATE_TITLE": ["训练完成  评级 %s", "ARENA CLEAR  GRADE %s"],

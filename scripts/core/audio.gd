@@ -7,6 +7,7 @@ const NAMES := [
 	"hit_1", "hit_2", "hit_heavy", "break",
 	"dash", "walljump", "land", "slide",
 	"shot", "enemy_shot", "deflect", "overclock", "hurt", "charge", "shield_block",
+	"sprint", "possess",
 ]
 
 var _streams := {}

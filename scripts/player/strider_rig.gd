@@ -68,6 +68,8 @@ var _toe_off := [Vector2.ZERO, Vector2.ZERO]
 var _tilt_off := [0.0, 0.0]
 var _inert_t := 1.0
 ## 刀臂也做惯性化：出刀、收刀那一刻不会一帧跳过去
+## 台阶：机体整体被挪上/挪下时，脚先留在原来的世界位置，再平滑踩到新地面
+var _toe_shift := 0.0
 var _was_slashing := false
 var _blade_off := 0.0
 var _blade_t := 1.0
@@ -120,6 +122,9 @@ func update(m: Dictionary, delta: float) -> void:
 		"wall":
 			target_angle = -28.0
 			target_y = -HIP_H
+		"kneel":
+			target_angle = 30.0
+			target_y = -11.0
 	target_angle += clampf(m.accel_x * m.facing * 0.012, -14.0, 16.0)
 	target_y += m.land_squash * 7.0
 	if m.slash_step >= 0:
@@ -144,9 +149,10 @@ func update(m: Dictionary, delta: float) -> void:
 		_last_mode = state
 	_inert_t += delta
 	var fade := exp(-_inert_t / INERTIA_TAU)
+	_toe_shift *= exp(-delta / 0.05)
 	var legs := []
 	for i in 2:
-		var toe: Vector2 = feet[i][0] + _toe_off[i] * fade
+		var toe: Vector2 = feet[i][0] + _toe_off[i] * fade + Vector2(0, _toe_shift)
 		var tilt: float = feet[i][1] + _tilt_off[i] * fade
 		_last_toes[i] = toe
 		_last_tilts[i] = tilt
@@ -155,7 +161,9 @@ func update(m: Dictionary, delta: float) -> void:
 	# ---- 刀臂
 	var shoulder := pelvis + SHOULDER.rotated(rot)
 	var rest := 150.0 + hull_angle * 0.5
-	if state == "wall":
+	if state == "kneel":
+		rest = 100.0
+	elif state == "wall":
 		rest = 60.0
 	elif state == "dash":
 		rest = 175.0
@@ -207,8 +215,11 @@ func update(m: Dictionary, delta: float) -> void:
 	var visor := PackedVector2Array()
 	for p in VISOR:
 		visor.append(pelvis + p.rotated(rot))
-	_shapes.append(["poly", visor, CYAN.lerp(Color.WHITE, m.glow), CYAN])
-	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 1.8 + m.glow, CYAN.lerp(Color.WHITE, m.glow)])
+	# glow < 0：没有意识的空机体，目镜和核心变暗
+	var g: float = maxf(m.glow, 0.0)
+	var eye: Color = CYAN.lerp(Color.WHITE, g) if m.glow >= 0.0 else Color(0.1, 0.3, 0.35)
+	_shapes.append(["poly", visor, eye, CYAN if m.glow >= 0.0 else EDGE_BACK])
+	_shapes.append(["dot", pelvis + Vector2(-3, -7).rotated(rot), 1.8 + g, eye])
 	_shapes.append(["line", mount, barrel_end, 3.5, Color(0.35, 0.4, 0.48)])
 	_shapes.append(["line", mount, barrel_end, 1.0, EDGE])
 	_shapes.append(["dot", mount, 2.5, FILL])
@@ -262,6 +273,9 @@ func _foot_targets(m: Dictionary, pelvis: Vector2) -> Array:
 			return [[pelvis + Vector2(-10, 17), 50.0], [pelvis + Vector2(-19, 12), 60.0]]
 		"slide":
 			return [[Vector2(20, 0), -20.0], [Vector2(-6, 0), 0.0]]
+		"kneel":
+			# 待机：一条腿跪下，一条腿撑着
+			return [[Vector2(7, 0), -10.0], [Vector2(-9, 0), 70.0]]
 		"wall":
 			# 一只脚抵住身后的墙，另一条腿收起
 			return [[Vector2(-6, -9), -80.0], [pelvis + Vector2(2, 13), 50.0]]
@@ -348,6 +362,16 @@ func _mirror_cables() -> void:
 		for arr in c:
 			for i in arr.size():
 				arr[i].x = -arr[i].x
+
+
+## 机体被整体挪了 dy（世界坐标，正 = 往下）：髋、脚、线缆先留在原处，再平滑追上
+func ground_shift(dy: float) -> void:
+	_pelvis_y -= dy
+	_toe_shift -= dy
+	for c in _cables:
+		for arr in c:
+			for i in arr.size():
+				arr[i].y -= dy
 
 
 func kick() -> void:

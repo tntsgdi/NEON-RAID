@@ -98,7 +98,7 @@ func _hit_targets(from: Vector2, to: Vector2) -> bool:
 				queue_free()
 				return true
 	else:
-		for p in get_tree().get_nodes_in_group("player"):
+		for p in get_tree().get_nodes_in_group("controlled"):
 			if _segment_hits(from, to, p.hurt_rect()):
 				if p.take_bullet(self):
 					queue_free()

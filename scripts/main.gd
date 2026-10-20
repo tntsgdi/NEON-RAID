@@ -1,5 +1,6 @@
 extends Node
-## 灰盒测试：F4 在「手感测试场」（M1）和「战斗训练场」（M2）之间切换。
+## 灰盒测试：F4 在「手感测试场」（M1）、「战斗训练场」（M2）、「夺壳训练场」（M3）之间循环切换。
+## 意识控制器（controller）决定当前操控哪具机体；镜头、HUD、掉坑、计时都跟着 controller.current 走。
 ## 镜头视野按 640×360 设计。默认高清平滑渲染（四肢转动、高速移动不闪锯齿）；
 ## F3 切到 640×360 像素渲染（整数倍放大）对比。界面始终在最上层清晰绘制。
 
@@ -8,7 +9,10 @@ var level: Node2D
 ## 当前是手感测试场时指向它（测试用），否则为 null
 var range_: TestRange
 var arena: CombatArena
+var possess_range: PossessRange
+## 基础机体（R-0 原型机身）
 var player: Player
+var controller: Consciousness
 var camera: Camera2D
 var hud: Hud
 var tuning_panel: TuningPanel
@@ -100,6 +104,11 @@ func _ready() -> void:
 	camera = Camera2D.new()
 	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	world.add_child(camera)
+	controller = Consciousness.new()
+	add_child(controller)
+	controller.setup(player, world)
+	controller.lost.connect(_on_lost)
+	controller.shell_changed.connect(_on_shell_changed)
 
 	# 屏幕后处理（色差、冲击波、暗角）：在世界之上、界面之下
 	var post_layer := CanvasLayer.new()
@@ -226,14 +235,21 @@ func _make_theme() -> Theme:
 	return t
 
 
-## kind："range"（手感测试场）或 "arena"（战斗训练场）
+## kind："range"（手感测试场）、"arena"（战斗训练场）或 "possess"（夺壳训练场）
 func load_level(kind: String) -> void:
+	# 先回到基础机体：夺来的机体属于旧场地，场地移除前要先让意识离开它
+	controller.return_to_base(player.global_position)
 	if level != null:
 		world.remove_child(level)
 		level.queue_free()
 	range_ = null
 	arena = null
-	if kind == "arena":
+	possess_range = null
+	if kind == "possess":
+		possess_range = PossessRange.new()
+		possess_range.player = player
+		level = possess_range
+	elif kind == "arena":
 		arena = CombatArena.new()
 		arena.player = player
 		arena.training_clear.connect(_on_training_clear)
@@ -276,9 +292,9 @@ func restart() -> void:
 	_last_hp = player.hp
 
 
-## 把机体放到某处并让镜头立刻跟上（测试也用它）
+## 回到基础机体、放到某处并让镜头立刻跟上（测试也用它）
 func place(pos: Vector2, vel := Vector2.ZERO) -> void:
-	player.reset_at(pos)
+	controller.return_to_base(pos)
 	player.velocity = vel
 	_look = 0.0
 	camera.position = pos + Vector2(0, -40)
@@ -288,6 +304,8 @@ func place(pos: Vector2, vel := Vector2.ZERO) -> void:
 
 ## 第一次遇到某个机制时弹一条大字提示（每次启动游戏各提示一次）
 func _update_tips() -> void:
+	if controller.lock_in_range:
+		_tip("TIP_POSSESS")
 	if arena == null:
 		if not _tips.has("TIP_RANGE"):
 			_tip("TIP_RANGE")
@@ -323,6 +341,24 @@ func _on_impact(strength: float, dir: Vector2) -> void:
 	else:
 		_kick += dir.normalized() * s
 		_shake = maxf(_shake, s * 0.3)
+
+
+## 换了机体：第一次换到某种机体时提示它的操作
+func _on_shell_changed(shell: Node2D) -> void:
+	_look = 0.0
+	if shell is DroneBot:
+		_tip("TIP_SHELL_DRONE")
+	elif shell is EnemyBot:
+		_tip("TIP_SHELL_BOT")
+	elif shell is Wisp:
+		_tip("TIP_WISP")
+
+
+## 光球没来得及投射出去：回检查点，用基础机体重来
+func _on_lost() -> void:
+	TimeFx.reset()
+	var x: float = controller.current.global_position.x if is_instance_valid(controller.current) else player.last_floor_x
+	place.call_deferred(level.checkpoint_for(x))
 
 
 ## 血打空：0.3 秒内回检查点（不黑屏不加载），当前这一段重来
@@ -362,22 +398,27 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("render_mode"):
 		set_pixel_mode(not pixel_mode)
 	if Input.is_action_just_pressed("switch_level"):
-		load_level("range" if arena != null else "arena")
+		load_level("arena" if range_ != null else ("possess" if arena != null else "range"))
 
-	var x := player.global_position.x
-	if not running and not finished and level.timer_started(player):
+	var body := _body()
+	var x := body.global_position.x
+	if not running and not finished and level.timer_started(body):
 		running = true
 	if running:
 		run_time += delta
-		if level.is_finished(player):
+		if level.is_finished(body):
 			running = false
 			finished = true
 			best = run_time if best < 0.0 else minf(best, run_time)
-	if player.global_position.y > level.pit_y():
-		place(level.checkpoint_for(player.last_floor_x))
+	if body.global_position.y > level.pit_y():
+		# 掉进深渊：基础机体回检查点；夺来的机体或光球掉下去也一样（不再弹光球）
+		place(level.checkpoint_for(player.last_floor_x if body == player else x))
+		body = player
 
 	# 配乐：战斗训练场有敌人时战斗层全开，清场后回落；手感测试场高速跑动时稍微加一点
-	if arena != null:
+	if possess_range != null:
+		Music.intensity = 0.7 if x > 900.0 else 0.4
+	elif arena != null:
 		if arena.enemies.is_empty():
 			Music.intensity = 0.3 if arena.cleared else 0.45
 		elif arena.wave >= 3 or arena.enemies.size() >= 3 or player.hp == 1:
@@ -392,10 +433,11 @@ func _process(delta: float) -> void:
 	_ca = move_toward(_ca, 2.5 if TimeFx.slowmo_active() else 0.0, real * 30.0)
 	_shock_t = minf(_shock_t + real * 2.2, 1.0)
 	_post.set_shader_parameter("ca", _ca * Settings.v.aberration)
-	var fast := clampf((absf(player.velocity.x) - Tuning.v.run_speed) / maxf(Tuning.v.sprint_speed - Tuning.v.run_speed, 1.0), 0.0, 1.0)
-	_post.set_shader_parameter("speed_blur", fast * (1.0 if player.sprinting else 0.5))
+	var bvel: Vector2 = body.velocity if "velocity" in body else Vector2.ZERO
+	var fast := clampf((absf(bvel.x) - Tuning.v.run_speed) / maxf(Tuning.v.sprint_speed - Tuning.v.run_speed, 1.0), 0.0, 1.0)
+	_post.set_shader_parameter("speed_blur", fast * (1.0 if body == player and player.sprinting else 0.5))
 	# 风声：越快越响
-	var wind_k := clampf(absf(player.velocity.x) / Tuning.v.sprint_speed, 0.0, 1.3)
+	var wind_k := clampf(bvel.length() / Tuning.v.sprint_speed, 0.0, 1.3)
 	_wind.volume_db = linear_to_db(maxf(pow(wind_k, 2.0) * 0.9, 0.0001)) - 4.0
 	_env.glow_intensity = 0.42 * Settings.v.glow
 	_rain.emitting = Settings.v.rain > 0.5
@@ -404,25 +446,41 @@ func _process(delta: float) -> void:
 	var vp := get_viewport().get_visible_rect().size
 	_post.set_shader_parameter("aspect", vp.x / maxf(vp.y, 1.0))
 	# 前景灯柱只在高速时淡入，平时不挡视线
-	var spd := clampf((absf(player.velocity.x) / Tuning.v.run_speed - 0.6) / 0.5, 0.0, 1.0)
+	var spd := clampf((absf(bvel.x) / Tuning.v.run_speed - 0.6) / 0.5, 0.0, 1.0)
 	_foreground.modulate.a = lerpf(_foreground.modulate.a, spd, 1.0 - exp(-4.0 * real))
 	var slow := TimeFx.slowmo_active()
 	_tint.color.a = lerpf(_tint.color.a, 0.14 if slow else 0.0, 1.0 - exp(-20.0 * delta / maxf(Engine.time_scale, 0.05)))
-	hud.refresh(level.label(x), run_time, best, player.velocity.length(), finished,
+	hud.refresh(level.label(x), run_time, best, bvel.length(), finished,
 		"HUD_MODE_PIXEL" if pixel_mode else "HUD_MODE_HD", tuning_panel.visible)
-	hud.refresh_combat(player.hp, Player.MAX_HP, player.energy, Tuning.v.gun_energy, player.overclock_charge > 0.0)
+	if body == player:
+		hud.refresh_combat(player.hp, Player.MAX_HP, player.energy, Tuning.v.gun_energy, player.overclock_charge > 0.0)
+	elif body is EnemyBot:
+		hud.refresh_combat(body.hp, EnemyBot.MAX_HP, 0.0, 0.0, false)
+	elif body is DroneBot:
+		hud.refresh_combat(body.hp, DroneBot.MAX_HP, 0.0, 0.0, false)
+	else:
+		hud.refresh_combat(0, 0, 0.0, 0.0, false)
+
+
+## 当前被意识控制的机体
+func _body() -> Node2D:
+	return controller.current if is_instance_valid(controller.current) else player
 
 
 ## 镜头在物理帧里移动，和机体一起被物理插值，任何刷新率下都平滑
 func _physics_process(delta: float) -> void:
 	var T: Dictionary = Tuning.v
-	_look = lerpf(_look, clampf(player.velocity.x * T.camera_look_ahead, -170.0, 170.0), 1.0 - exp(-5.0 * delta))
-	var target := player.global_position + Vector2(_look, -40.0)
+	var body := _body()
+	var bvel: Vector2 = body.velocity if "velocity" in body else Vector2.ZERO
+	_look = lerpf(_look, clampf(bvel.x * T.camera_look_ahead, -170.0, 170.0), 1.0 - exp(-5.0 * delta))
+	var target := body.global_position + Vector2(_look, -40.0)
 	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-12.0 * delta))
 	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-7.0 * delta))
 	# 越快镜头拉得越远：跑档最多拉远 6%，疾驰档 12%；进入疾驰的一刻先猛缩一下再拉远
-	var speed_k := clampf(absf(player.velocity.x) / T.run_speed - 0.5, 0.0, 1.0)
-	var want_zoom := 1.0 - 0.04 * speed_k - (0.04 if player.sprinting else 0.0) - (0.02 if player.state == Player.State.DASH else 0.0)
+	var speed_k := clampf(absf(bvel.x) / T.run_speed - 0.5, 0.0, 1.0)
+	var want_zoom := 1.0 - 0.04 * speed_k
+	if body == player:
+		want_zoom -= (0.04 if player.sprinting else 0.0) + (0.02 if player.state == Player.State.DASH else 0.0)
 	_zoom_pulse = move_toward(_zoom_pulse, 0.0, delta * 0.25)
 	camera.zoom = Vector2.ONE * (lerpf(camera.zoom.x - _zoom_pulse * 0.0, want_zoom, 1.0 - exp(-3.0 * delta)) + _zoom_pulse)
 	_kick = _kick.lerp(Vector2.ZERO, 1.0 - exp(-18.0 * delta))

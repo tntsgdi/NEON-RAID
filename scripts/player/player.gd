@@ -25,6 +25,11 @@ const LOW := Vector2(12, 16)
 const MAX_HP := 3
 
 var input: PlayerInput = DeviceInput.new()
+## 被意识控制中；false 时是被留在原地、单膝跪着待机的空机体（可以再夺回来）
+var parked := false
+## 软锁定目标（意识控制器每帧设置）：开枪修正、挥刀转向、纯键盘瞄准都用它
+var lock_target: Node2D
+const IDLE_INPUT := preload("res://scripts/player/player_input.gd")
 var state := State.AIR
 var facing := 1
 var aim := Vector2.RIGHT
@@ -106,7 +111,7 @@ func _ready() -> void:
 	add_child(rig)
 	if fx_parent == null:
 		fx_parent = get_parent()
-	add_to_group("player")
+	add_to_group("controlled")
 	trail = BladeTrail.new()
 	trail.z_index = 5
 	fx_parent.add_child.call_deferred(trail)
@@ -142,7 +147,9 @@ func reset_at(pos: Vector2) -> void:
 func _physics_process(delta: float) -> void:
 	var T: Dictionary = Tuning.v
 	input.poll(self)
-	if input.aim.length() > 0.1:
+	if input.aim_keys:
+		aim = _key_aim()
+	elif input.aim.length() > 0.1:
 		aim = input.aim.normalized()
 	_jump_buffer = T.jump_buffer if input.jump_pressed else maxf(_jump_buffer - delta, 0.0)
 	_dash_cd = maxf(_dash_cd - delta, 0.0)
@@ -167,7 +174,17 @@ func _physics_process(delta: float) -> void:
 			_wall(delta, T)
 
 	var vy_before := velocity.y
+	var vx_before := velocity.x
+	var y_before := global_position.y
+	var was_ground := state == State.GROUND
+	# 地面上贴地吸附 34 像素：走下台阶时贴着落下，不会腾空一下
+	floor_snap_length = 34.0 if was_ground else 4.0
 	move_and_slide()
+	if was_ground:
+		_step_up(vx_before)
+		var drop := global_position.y - y_before
+		if is_on_floor() and absf(drop) > 3.0:
+			rig.ground_shift(drop)
 	_ledge_assist()
 	_after_move(vy_before, T)
 	_update_sprint(delta, T)
@@ -313,6 +330,21 @@ func _after_move(vy_before: float, T: Dictionary) -> void:
 				_end_dash(T)
 	if is_on_floor():
 		last_floor_x = global_position.x
+
+
+## 自动迈上台阶：地面上往前走碰到 36 像素以内的台阶，直接迈上去（不用跳，速度不丢）
+func _step_up(vx_before: float) -> void:
+	var dir := _dir_x()
+	if dir == 0 or not is_on_wall() or signf(vx_before) != dir:
+		return
+	for up in [4, 8, 12, 16, 20, 24, 28, 32, 36]:
+		if test_move(global_transform, Vector2(0, -up)):
+			return
+		if not test_move(global_transform.translated(Vector2(0, -up)), Vector2(dir * 3, 0)):
+			global_position += Vector2(dir * 3, -up)
+			velocity.x = vx_before
+			rig.ground_shift(-up)
+			return
 
 
 ## 墙顶自动翻上：贴墙往上冲、头已经高过墙沿时，把机体推上去
@@ -471,7 +503,7 @@ func _update_sprint(delta: float, T: Dictionary) -> void:
 			_sprint_t = 0.0
 			_sprint_held = 0.0
 		return
-	if same and absf(velocity.x) >= T.run_speed * 0.92 and state != State.WALL:
+	if same and input.run_held and absf(velocity.x) >= T.run_speed * 0.92 and state != State.WALL:
 		_sprint_t += delta
 		if _sprint_t >= T.sprint_delay:
 			sprinting = true
@@ -532,6 +564,10 @@ func _start_slash(step: int, T: Dictionary) -> void:
 	_slash_queued = false
 	_slash_hit_done = false
 	_slash_dash = state == State.DASH
+	if _dir_x() == 0 and is_instance_valid(lock_target) and absf(lock_target.global_position.x - global_position.x) < 70.0:
+		var tx := signf(lock_target.global_position.x - global_position.x)
+		if tx != 0.0:
+			facing = int(tx)
 	_slash_aim = _slash_dir()
 	var heavy := step == 2 or _slash_dash
 	trail.heavy = heavy
@@ -635,14 +671,73 @@ func _update_gun(delta: float, T: Dictionary) -> void:
 	var muzzle := rig.muzzle()
 	var dmg := 2 if overclock_charge > 0.0 else 1
 	overclock_charge = 0.0
-	Bullet.fire(fx_parent, muzzle, aim * T.bullet_speed, Bullet.Team.PLAYER, dmg, self)
-	Fx.sparks(fx_parent, muzzle, aim, 5, Bullet.PLAYER_COLOR)
+	var shot := assisted_aim(muzzle, aim, input.aim_keys)
+	Bullet.fire(fx_parent, muzzle, shot * T.bullet_speed, Bullet.Team.PLAYER, dmg, self)
+	Fx.sparks(fx_parent, muzzle, shot, 5, Bullet.PLAYER_COLOR)
 	Fx.flash(fx_parent, muzzle, Neon.CYAN_HOT, 7.0)
 	Audio.play("shot", -3.0)
 	rig.kick()
 	if state == State.GROUND:
 		# 后坐力只在站定或慢跑时有，高速时不把速度磨掉
 		velocity.x -= aim.x * 40.0 * clampf(1.0 - absf(velocity.x) / T.run_speed, 0.0, 1.0)
+
+
+# ---------------------------------------------------------------- 夺壳
+
+## 纯键盘瞄准：有锁定目标就瞄它，否则朝面朝方向（按住上/下斜着打）
+func _key_aim() -> Vector2:
+	if is_instance_valid(lock_target):
+		var to: Vector2 = lock_target.global_position + Vector2(0, -18) - (global_position + CHEST)
+		if to.length() > 4.0:
+			return to.normalized()
+	var a := Vector2(facing, 0)
+	if input.move.y < -0.5:
+		a = Vector2(facing * 0.6, -0.8)
+	elif input.move.y > 0.5:
+		a = Vector2(facing * 0.85, 0.5)
+	return a.normalized()
+
+
+## 开枪方向修正：瞄准方向与锁定目标夹角在 15° 内就打向目标；纯键盘瞄准时总是打向目标
+func assisted_aim(from: Vector2, dir: Vector2, keys: bool) -> Vector2:
+	if not is_instance_valid(lock_target):
+		return dir
+	var to: Vector2 = lock_target.global_position + Vector2(0, -18) - from
+	if to.length() < 4.0:
+		return dir
+	if keys or absf(dir.angle_to(to)) <= deg_to_rad(15.0):
+		return to.normalized()
+	return dir
+
+
+func center() -> Vector2:
+	return global_position + Vector2(0, -16)
+
+
+func alive() -> bool:
+	return true
+
+
+## 意识离开：机体单膝跪在原地待机，可以再夺回来
+func release_control() -> void:
+	parked = true
+	input = IDLE_INPUT.new()
+	slash_step = -1
+	sprinting = false
+	_sprint_t = 0.0
+	lock_target = null
+	remove_from_group("controlled")
+	add_to_group("possessable")
+
+
+## 意识回来：继承速度，短暂无敌
+func take_control(inp: PlayerInput, vel: Vector2) -> void:
+	parked = false
+	input = inp
+	velocity = vel
+	_iframes = maxf(_iframes, 0.4)
+	remove_from_group("possessable")
+	add_to_group("controlled")
 
 
 func hurt_rect() -> Rect2:
@@ -655,7 +750,7 @@ func dash_safe() -> bool:
 
 
 func invulnerable() -> bool:
-	return dash_safe() or _iframes > 0.0
+	return parked or dash_safe() or _iframes > 0.0
 
 
 ## 敌弹碰到机体时调用；返回 true 表示吃下这发（子弹消失）
@@ -753,6 +848,31 @@ func _animate(delta: float, T: Dictionary) -> void:
 	rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.3) * _squash.x, _squash.y)
 	var ratio: float = absf(velocity.x) / T.run_speed
 	var mode := "idle"
+	if parked and state == State.GROUND:
+		mode = "kneel"
+	else:
+		mode = _mode_for_state(ratio, delta)
+	rig.update({
+		"state": mode,
+		"facing": facing,
+		"vel": velocity,
+		"accel_x": (velocity.x - _prev_vx) / maxf(delta, 0.0001),
+		"speed_ratio": ratio,
+		"run_phase": _run_phase,
+		"time": _idle_time,
+		"land_squash": _land_squash,
+		"slash_step": slash_step,
+		"slash_t": clampf(_slash_time / slash_duration(), 0.0, 1.0) if slash_step >= 0 else 0.0,
+		"slash_dir": rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle()),
+		"aim_local": Vector2(aim.x * facing, aim.y),
+		"sprint": sprinting,
+		"glow": (1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0) - (0.8 if parked else 0.0),
+	}, delta)
+	_after_animate(delta, T)
+
+
+func _mode_for_state(ratio: float, delta: float) -> String:
+	var mode := "idle"
 	match state:
 		State.GROUND:
 			if _skidding():
@@ -775,22 +895,10 @@ func _animate(delta: float, T: Dictionary) -> void:
 			mode = "slide"
 		State.WALL:
 			mode = "wall"
-	rig.update({
-		"state": mode,
-		"facing": facing,
-		"vel": velocity,
-		"accel_x": (velocity.x - _prev_vx) / maxf(delta, 0.0001),
-		"speed_ratio": ratio,
-		"run_phase": _run_phase,
-		"time": _idle_time,
-		"land_squash": _land_squash,
-		"slash_step": slash_step,
-		"slash_t": clampf(_slash_time / slash_duration(), 0.0, 1.0) if slash_step >= 0 else 0.0,
-		"slash_dir": rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle()),
-		"aim_local": Vector2(aim.x * facing, aim.y),
-		"sprint": sprinting,
-		"glow": 1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0,
-	}, delta)
+	return mode
+
+
+func _after_animate(delta: float, T: Dictionary) -> void:
 	if slash_step >= 0:
 		var pts := rig.blade_points()
 		trail.add(pts[0], pts[1])
@@ -826,7 +934,7 @@ func _run_x(delta: float, accel: float, decel: float, turn: float, T: Dictionary
 	if _wall_lock > 0.0:
 		return
 	var dir := _dir_x()
-	var top: float = sprint_top() if sprinting else T.run_speed
+	var top: float = sprint_top() if sprinting else (T.run_speed if input.run_held else T.walk_speed)
 	var vx := velocity.x
 	if dir == 0:
 		vx = move_toward(vx, 0.0, decel * delta)

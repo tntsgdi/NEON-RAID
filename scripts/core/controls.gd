@@ -7,7 +7,11 @@ const KEYS := {
 	"move_up": [KEY_W, KEY_UP],
 	"move_down": [KEY_S, KEY_DOWN],
 	"jump": [KEY_SPACE],
-	"dash": [KEY_SHIFT],
+	"dash": [KEY_L],
+	"run": [KEY_SHIFT],
+	"slash_key": [KEY_J],
+	"shoot_key": [KEY_K],
+	"possess": [KEY_E],
 	"slide": [KEY_C],
 	"restart": [KEY_R],
 	"tuning": [KEY_F1],
@@ -22,6 +26,7 @@ const PAD := {
 	"jump": [JOY_BUTTON_A],
 	"slide": [JOY_BUTTON_B],
 	"slash": [JOY_BUTTON_X],
+	"possess": [JOY_BUTTON_Y],
 	"dash": [JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_LEFT_SHOULDER],
 	"settings": [JOY_BUTTON_START],
 	"restart": [JOY_BUTTON_BACK],
@@ -58,6 +63,10 @@ func _ready() -> void:
 			var ev := InputEventMouseButton.new()
 			ev.button_index = button
 			InputMap.action_add_event(action, ev)
+	# J / K 和鼠标右键 / 左键是同一个动作
+	for pair in [["slash", "slash_key"], ["shoot", "shoot_key"]]:
+		for ev in InputMap.action_get_events(pair[1]):
+			InputMap.action_add_event(pair[0], ev)
 	for action in PAD:
 		for button in PAD[action]:
 			var ev := InputEventJoypadButton.new()

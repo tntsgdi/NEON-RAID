@@ -53,8 +53,28 @@ func _run() -> void:
 	_drive(Vector2(2055, 0), Vector2.ZERO, climb)
 	await _strip("eval_wall.png", 8, 8)
 
+	# 走路上台阶（不跳）
+	_drive(Vector2(700, 0), Vector2.ZERO, [{"frames": 9999, "move": R, "walk": true}])
+	await _strip("eval_stairs.png", 8, 10)
+
+	# 夺壳训练场：锁定崖边的失控侦察机 → E 夺壳（光束）→ 开着它飞过深渊（整屏）
+	main.load_level("possess")
+	await physics_frame
+	main.place(Vector2(300, 0))
+	var drone = null
+	for c in main.possess_range.get_children():
+		if c.get_script() != null and c.get_script().resource_path.ends_with("drone_bot.gd") and c.wild and c.global_position.x > 300.0:
+			drone = c
+	var up: Vector2 = (drone.global_position - (p.global_position + Vector2(0, -18))).normalized()
+	var inp = load("res://scripts/player/scripted_input.gd").new([{"frames": 20, "aim": up}, {"frames": 1, "press": ["possess"], "aim": up}, {"frames": 9999, "move": Vector2(1, -0.1)}])
+	main.controller.input = inp
+	p.input = inp
+	await _frames(14)
+	await _strip("eval_possess.png", 8, 12)
+
 	# 战斗训练场：安保机瞄准 → 开火 → 挥刀弹反
 	main.load_level("arena")
+	main.place(Vector2(-330, 0))
 	var arena = main.arena
 	arena.auto_waves = false
 	await physics_frame
@@ -77,7 +97,9 @@ func _run() -> void:
 
 func _drive(start: Vector2, vel: Vector2, steps: Array) -> void:
 	main.place(start, vel)
-	p.input = load("res://scripts/player/scripted_input.gd").new(steps)
+	var inp = load("res://scripts/player/scripted_input.gd").new(steps)
+	main.controller.input = inp
+	p.input = inp
 
 
 func _frames(n: int) -> void:
@@ -99,7 +121,8 @@ func _strip(file: String, count: int, every: int, wide := false) -> void:
 			sheet.blit_rect(img, Rect2i(Vector2i.ZERO, cell), Vector2i(i * cell.x, 0))
 		else:
 			var scale := float(img.get_width()) / 640.0
-			var at: Vector2 = p.get_global_transform_with_canvas().origin * scale + Vector2(0, -20 * scale)
+			var body: Node2D = main.controller.current if is_instance_valid(main.controller.current) else p
+			var at: Vector2 = body.get_global_transform_with_canvas().origin * scale + Vector2(0, -20 * scale)
 			var c := Vector2i(at) - cell / 2
 			c.x = clampi(c.x, 0, img.get_width() - cell.x)
 			c.y = clampi(c.y, 0, img.get_height() - cell.y)
