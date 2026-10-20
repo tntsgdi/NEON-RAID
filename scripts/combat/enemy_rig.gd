@@ -6,7 +6,7 @@ extends Node2D
 ##   受击：躯干被打得后仰（弹簧），头被甩一下；被打上天会翻滚，落地后站直
 ##   蓄力：压低身体、头往前探；切换动作时脚做惯性化过渡，不会一帧跳过去
 
-const HIP_H := 15.0
+const HIP_H := 13.0
 const THIGH := 8.0
 const SHIN := 8.0
 const TORSO := 13.0
@@ -63,7 +63,7 @@ func update(m: Dictionary, delta: float) -> void:
 	var hip := -HIP_H
 	match state:
 		"walk":
-			hip += 1.0 - absf(sin(_phase * TAU * 2.0)) * 1.5
+			hip += 1.0 - absf(sin(_phase * TAU * 2.0)) * 2.8
 		"aim":
 			lean = -6.0
 			hip += 1.0
@@ -158,7 +158,7 @@ func update(m: Dictionary, delta: float) -> void:
 	_shapes.clear()
 
 	# 后腿、后臂
-	_leg(pelvis + Vector2(-1.5, 0), _feet[1], red.darkened(0.45), 2.5)
+	_leg(pelvis + Vector2(-1.5, 0), _feet[1], red.darkened(0.45), 3.5)
 	var back_hand := shoulder + Vector2(-3, 7).rotated(rot * 0.5) + Vector2(sin(_phase * TAU) * 3.0 * ratio, 0)
 	if state == "charge":
 		back_hand = shoulder + Vector2(-8, 3).rotated(rot)
@@ -178,7 +178,7 @@ func update(m: Dictionary, delta: float) -> void:
 	var look := clampf(_aim.y * 2.0, -1.5, 1.5)
 	_shapes.append(["line", head_c + Vector2(0.5, -1.0 + look).rotated(rot * 0.6), head_c + Vector2(4.5, -1.0 + look).rotated(rot * 0.6), 2.0, Neon.WHITE_HOT if flash else eye])
 	# 前腿
-	_leg(pelvis + Vector2(1.5, 0), _feet[0], red, 2.8)
+	_leg(pelvis + Vector2(1.5, 0), _feet[0], red, 4.0)
 	# 武器臂
 	if kind == "rusher":
 		# 冲锋机：两臂前伸护住撞角

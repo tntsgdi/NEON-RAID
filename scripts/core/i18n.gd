@@ -79,6 +79,7 @@ const STRINGS := {
 	"SET_shake": ["震屏", "Screen shake"],
 	"SET_rain": ["雨", "Rain"],
 	"SET_glow": ["辉光", "Glow"],
+	"SET_hitstop": ["打击停顿", "Hit stop"],
 	"SET_music": ["音乐音量", "Music volume"],
 	"SET_sfx": ["音效音量", "SFX volume"],
 	"SET_HINT": ["Esc / 手柄 Start 关闭 · 设置会自动保存

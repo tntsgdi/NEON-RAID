@@ -71,6 +71,7 @@ var _inert_t := 1.0
 ## 台阶：机体整体被挪上/挪下时，脚先留在原来的世界位置，再平滑踩到新地面
 var _toe_shift := 0.0
 var _was_slashing := false
+var _last_step := -1
 var _blade_off := 0.0
 var _blade_t := 1.0
 
@@ -171,10 +172,12 @@ func update(m: Dictionary, delta: float) -> void:
 	var slashing: bool = m.slash_step >= 0
 	if slashing:
 		want = m.slash_dir + _slash_arc(m.slash_step, m.slash_t)
-	if slashing != _was_slashing:
+	# 出刀、收刀、连击换下一刀时：记下旧刀角与新目标的差，接下来平滑接上（不会一帧跳过去）
+	if slashing != _was_slashing or (slashing and m.slash_step != _last_step):
 		_blade_off = rad_to_deg(angle_difference(deg_to_rad(want), deg_to_rad(_blade_angle)))
 		_blade_t = 0.0
 		_was_slashing = slashing
+	_last_step = m.slash_step
 	if slashing:
 		# 出刀：前约 0.06 秒从原来的位置接过去，之后严格按挥刀曲线走（命中判定不受影响）
 		_blade_angle = want + _blade_off * exp(-_blade_t / 0.03)

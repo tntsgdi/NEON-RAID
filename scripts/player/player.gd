@@ -78,6 +78,8 @@ var _pre_dash_speed := 0.0
 var _streak_timer := 0.0
 ## 墙面行走时头朝上（往上走）还是朝下
 var _wall_up := true
+## 在地面上往高墙推了多久（推够 0.08 秒才上墙，避免战斗中误吸）
+var _push_wall := 0.0
 
 # 挥刀层
 var slash_step := -1
@@ -230,7 +232,7 @@ func _air(delta: float, T: Dictionary) -> void:
 	if input.dash_pressed and _air_dashes > 0 and _dash_cd <= 0.0:
 		_start_dash(T)
 		return
-	if _wall_dir != 0 and _wall_lock <= 0.0 and (_dir_x() == _wall_dir or (input.move.y < -0.3 and _dir_x() != -_wall_dir)):
+	if _wall_dir != 0 and _wall_lock <= 0.0 and _dir_x() == _wall_dir:
 		_set_state(State.WALL)
 		_air_dashes = int(T.air_dashes)
 		_air_hang_used = false
@@ -364,7 +366,8 @@ func _after_move(vy_before: float, T: Dictionary) -> void:
 ## 自动迈上台阶：地面上往前走碰到 36 像素以内的台阶，直接迈上去（不用跳，速度不丢）
 func _step_up(vx_before: float) -> void:
 	var dir := _dir_x()
-	if dir == 0 or not is_on_wall() or signf(vx_before) != dir:
+	if dir == 0 or not is_on_wall() or (signf(vx_before) != dir and _push_wall <= 0.0):
+		_push_wall = 0.0
 		return
 	for up in [4, 8, 12, 16, 20, 24, 28, 32, 36]:
 		if test_move(global_transform, Vector2(0, -up)):
@@ -374,8 +377,10 @@ func _step_up(vx_before: float) -> void:
 			velocity.x = vx_before
 			rig.ground_shift(-up)
 			return
-	# 迈不上去的高墙：直接走上墙面，水平速度转成向上的速度
-	if not test_move(global_transform, Vector2(0, -4)):
+	# 迈不上去的高墙：持续往墙上推 0.08 秒就走上墙面，水平速度转成向上的速度
+	_push_wall += get_physics_process_delta_time()
+	if _push_wall >= 0.08 and not test_move(global_transform, Vector2(0, -4)):
+		_push_wall = 0.0
 		var T: Dictionary = Tuning.v
 		var spd: float = T.run_speed * 0.85 if input.run_held else T.walk_speed
 		velocity = Vector2(dir * 30.0, -maxf(spd, absf(vx_before) * 0.85))
@@ -417,6 +422,14 @@ func _jump(T: Dictionary) -> void:
 ## 按住朝墙的方向按跳：轻推离墙、向上力度大，会回到同一面墙，单面墙也能一路爬上去；
 ## 不按方向或按离墙方向：大力蹬开墙面。
 func _wall_jump(T: Dictionary, wall: int) -> void:
+	if state == State.WALL and (_dir_x() == wall or input.move.y < -0.3):
+		# 墙面行走中：沿墙向上蹿一大截，脚不离墙
+		velocity = Vector2(wall * 30.0, minf(velocity.y, 0.0) - T.wall_climb_y)
+		_jump_buffer = 0.0
+		_squash = Vector2(0.85, 1.18)
+		Fx.dust(fx_parent, global_position + Vector2(wall * 6, -6), float(-wall), 4)
+		Audio.play("walljump", -8.0, 1.15)
+		return
 	if _dir_x() == wall:
 		velocity = Vector2(-wall * T.wall_climb_x, -T.wall_climb_y)
 		_wall_lock = 0.05
@@ -626,6 +639,8 @@ func _start_slash(step: int, T: Dictionary) -> void:
 
 ## 挥刀方向：固定朝面朝方向；按住上 = 上挑，空中按住下 = 下劈（不看鼠标）
 func _slash_dir() -> Vector2:
+	if state == State.WALL:
+		return Vector2(-_wall_dir, 0)  # 墙上挥刀：朝背离墙面的方向砍
 	if input.move.y < -0.5:
 		return Vector2.UP
 	if input.move.y > 0.5 and state != State.GROUND and state != State.SLIDE:
@@ -668,7 +683,7 @@ func _do_hit(T: Dictionary) -> void:
 		impact.emit(6.0 if heavy else 3.5, _slash_aim)
 		overclock_charge = 0.0
 		# 不再单独让刀身定格：命中停顿已经给了停顿感，两者叠加会变成"卡一下"
-		var stop: float = T.hit_stop * (1.5 if heavy else 1.0)
+		var stop: float = T.hit_stop * (1.5 if heavy else 1.0) * Settings.v.hitstop
 		if stop > 0.0:
 			TimeFx.hitstop(stop)
 
@@ -903,9 +918,12 @@ func _animate(delta: float, T: Dictionary) -> void:
 	# 骨架里的"前方"在墙上是沿墙方向：速度和瞄准都换到骨架自己的坐标里
 	var rig_vel := velocity
 	var rig_aim := Vector2(aim.x * facing, aim.y)
+	var rig_slash := Vector2(_slash_aim.x * facing, _slash_aim.y)
 	if on_wall:
+		var inv := Transform2D(rig.rotation, rig.scale, 0.0, Vector2.ZERO).affine_inverse()
 		rig_vel = Vector2(absf(velocity.y), 0.0)
-		rig_aim = Transform2D(rig.rotation, rig.scale, 0.0, Vector2.ZERO).affine_inverse().basis_xform(aim).normalized()
+		rig_aim = inv.basis_xform(aim).normalized()
+		rig_slash = inv.basis_xform(_slash_aim).normalized()
 	rig.update({
 		"state": mode,
 		"facing": 1 if on_wall else facing,
@@ -917,7 +935,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 		"land_squash": _land_squash,
 		"slash_step": slash_step,
 		"slash_t": clampf(_slash_time / slash_duration(), 0.0, 1.0) if slash_step >= 0 else 0.0,
-		"slash_dir": rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle()),
+		"slash_dir": rad_to_deg(rig_slash.angle()),
 		"aim_local": rig_aim,
 		"sprint": sprinting,
 		"glow": (1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0) - (0.8 if parked else 0.0),

@@ -38,6 +38,7 @@ func _run() -> void:
 	await _gap()
 	await _shaft()
 	await _wall_walk()
+	await _combo_blade()
 	await _slash()
 
 	if failures.is_empty():
@@ -158,8 +159,8 @@ func _smooth() -> void:
 		prev = toes.duplicate()
 		hull_worst = maxf(hull_worst, absf(player.rig.hull_angle - prev_hull))
 		prev_hull = player.rig.hull_angle
-		# 出刀 / 收刀那一帧刀臂角度的跳变
-		if (player.slash_step >= 0) != (prev_slash >= 0):
+		# 出刀 / 收刀 / 连击换刀那一帧刀臂角度的跳变
+		if (player.slash_step >= 0) != (prev_slash >= 0) or player.slash_step != prev_slash:
 			blade_jump = maxf(blade_jump, absf(rad_to_deg(angle_difference(deg_to_rad(prev_blade), deg_to_rad(player.rig._blade_angle)))))
 		prev_slash = player.slash_step
 		prev_blade = player.rig._blade_angle
@@ -237,6 +238,30 @@ func _shaft() -> void:
 	# 不按方向按跳：大力蹬开墙面
 	log = await _drive(Vector2(2058, -200), [{"frames": 20, "move": R}, {"frames": 1, "press": ["jump"], "hold": ["jump"]}, {"frames": 30, "hold": ["jump"]}])
 	_check(log[-1].pos.x < 2025.0, "不按方向蹬墙会被大力弹开（x=%.0f）" % log[-1].pos.x)
+
+
+## 三连击里换刀的那一帧刀角不突跳
+func _combo_blade() -> void:
+	main.place(Vector2(120, 0))  # 离训练机远一点，别把后面测试要用的训练机打残
+	await physics_frame
+	var steps := [{"frames": 1, "move": R}, {"frames": 10}]
+	for i in 3:
+		steps.append({"frames": 1, "press": ["slash"]})
+		steps.append({"until": func(p): return p.slash_step == i and p._slash_time > 0.05, "max": 120})
+	steps.append({"frames": 60})
+	var inp = load("res://scripts/player/scripted_input.gd").new(steps)
+	player.input = inp
+	var prev_step: int = player.slash_step
+	var prev_blade: float = player.rig._blade_angle
+	var worst := 0.0
+	while not inp.done:
+		await physics_frame
+		if player.slash_step != prev_step:
+			worst = maxf(worst, absf(rad_to_deg(angle_difference(deg_to_rad(prev_blade), deg_to_rad(player.rig._blade_angle)))))
+		prev_step = player.slash_step
+		prev_blade = player.rig._blade_angle
+	player.input = load("res://scripts/player/player_input.gd").new()
+	_check(worst <= 25.0, "三连击换刀那一帧刀角不突跳（%.1f°）" % worst)
 
 
 ## 训练机：挥刀命中、三段连击、打碎后重生
