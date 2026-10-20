@@ -12,6 +12,8 @@ var _shown := 0.0
 var _deny := 0.0
 ## 夺壳范围圈的圆心（当前机体），失败时显示
 var origin_node: Node2D
+## 夺壳冷却剩余比例（1 = 刚夺完，0 = 可以再夺）
+var cooldown_k := 0.0
 
 
 ## 按 E 但没有能夺的目标：准星抖一下，画出 220 像素的夺壳范围
@@ -44,8 +46,9 @@ func _draw() -> void:
 				draw_arc(c, Consciousness.POSSESS_RANGE, a0, a0 + TAU / seg, 3, Color(1.6, 1.7, 1.8, 0.5 * a), 1.0, true)
 	if _shown <= 0.0:
 		return
-	var col := Color(2.0, 2.1, 2.2, _shown) if in_range else Color(0.6, 0.65, 0.7, 0.6 * _shown)
-	var pulse := 1.0 + (0.08 * sin(_t * 10.0) if in_range else 0.0)
+	var ready := cooldown_k <= 0.0
+	var col := Color(2.0, 2.1, 2.2, _shown) if in_range and ready else Color(0.6, 0.65, 0.7, 0.6 * _shown)
+	var pulse := 1.0 + (0.08 * sin(_t * 10.0) if in_range and ready else 0.0)
 	var h := _size * 0.5 * pulse
 	var p := _pos
 	if _deny > 0.0:
@@ -56,6 +59,11 @@ func _draw() -> void:
 			var c := p + Vector2(h.x * sx, h.y * sy)
 			draw_line(c, c - Vector2(arm * sx, 0), col, 1.5, true)
 			draw_line(c, c - Vector2(0, arm * sy), col, 1.5, true)
+	# 冷却进度：外圈一道弧从空转到满，满了 E 才亮
+	if not ready:
+		var r := maxf(h.x, h.y) + 5.0
+		draw_arc(p, r, -PI * 0.5, -PI * 0.5 + TAU * (1.0 - cooldown_k), 32, Color(0.5, 1.6, 1.9, 0.9 * _shown), 2.0, true)
+		draw_arc(p, r, -PI * 0.5 + TAU * (1.0 - cooldown_k), PI * 1.5, 32, Color(0.3, 0.35, 0.4, 0.4 * _shown), 1.0, true)
 	if in_range:
 		# 键帽："E"
 		var font := ThemeDB.fallback_font

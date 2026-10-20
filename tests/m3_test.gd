@@ -152,6 +152,11 @@ func _lock_and_possess() -> void:
 	var cur = main.controller.current
 	_check(cur == a and a.controlled and player.parked, "按 E 夺取锁定目标，基础机体跪下待机")
 	_check(not a.is_in_group("enemy") and a.is_in_group("controlled"), "被夺的机体不再是敌人")
+	# 冷却：刚夺完 0.7 秒内按 E 夺不了别的机体
+	inp = _use([{"frames": 1, "aim": R}, {"frames": 1, "press": ["possess"], "aim": R}, {"frames": 2, "aim": R}])
+	await _until_done(inp)
+	_check(main.controller.current == a and main.controller.cooldown > 0.0, "夺壳后 0.7 秒冷却期间按 E 无效")
+	await _frames(90)
 	var hp0: int = b.hp
 	inp = _use([{"frames": 2, "keys": true}, {"frames": 1, "press": ["shoot"], "keys": true}, {"frames": 40, "keys": true}])
 	await _until_done(inp)

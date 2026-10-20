@@ -9,6 +9,8 @@ signal shell_changed(shell: Node2D)
 signal lost
 
 const POSSESS_RANGE := 220.0
+## 每次夺壳后的冷却（秒）；光球的紧急投射不受限制
+const COOLDOWN := 0.7
 const LOCK_RANGE := 360.0
 
 var base: Player
@@ -16,6 +18,7 @@ var current: Node2D
 var input: PlayerInput = DeviceInput.new()
 var lock: Node2D
 var lock_in_range := false
+var cooldown := 0.0
 var world: Node2D
 var reticle: Reticle
 
@@ -42,10 +45,12 @@ func return_to_base(pos: Vector2) -> void:
 	base.reset_at(pos)
 	current = base
 	lock = null
+	cooldown = 0.0
 	shell_changed.emit(base)
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	cooldown = maxf(cooldown - delta, 0.0)
 	if not is_instance_valid(current):
 		return
 	_update_lock()
@@ -54,7 +59,11 @@ func _physics_process(_delta: float) -> void:
 	reticle.target = lock
 	reticle.in_range = lock_in_range
 	reticle.origin_node = current
-	if input.possess_pressed:
+	reticle.cooldown_k = 0.0 if current is Wisp else cooldown / COOLDOWN
+	if input.possess_pressed and cooldown > 0.0 and not (current is Wisp):
+		reticle.deny()
+		Audio.play("shield_block", -16.0, 1.8)
+	elif input.possess_pressed:
 		var t := _possess_target()
 		if t != null:
 			possess(t)
@@ -165,6 +174,7 @@ func possess(target: Node2D) -> void:
 		target.died.connect(_on_shell_died, CONNECT_ONE_SHOT)
 	current = target
 	lock = null
+	cooldown = COOLDOWN
 	shell_changed.emit(target)
 
 
