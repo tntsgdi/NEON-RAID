@@ -42,6 +42,9 @@ var _flash := 0.0
 var _shield_flash := 0.0
 var _walk_phase := 0.0
 var _spawn_pop := 0.25
+## 出场时间：刚刷出来的 0.7 秒里不会发现玩家、不会攻击
+var _grace := 0.7
+var elite := false
 var _hit_player := false
 ## 受击后仰（弹簧）
 var _recoil := 0.0
@@ -174,6 +177,7 @@ func _physics_process(delta: float) -> void:
 	_flash = maxf(_flash - delta, 0.0)
 	_shield_flash = maxf(_shield_flash - delta, 0.0)
 	_spawn_pop = maxf(_spawn_pop - delta, 0.0)
+	_grace = maxf(_grace - delta, 0.0)
 	_recoil_v += (-_recoil * 220.0 - _recoil_v * 14.0) * delta
 	_recoil += _recoil_v * delta
 	velocity.y = minf(velocity.y + GRAVITY * delta, 600.0)
@@ -272,8 +276,14 @@ func _charge(delta: float) -> void:
 		_t = 1.0
 
 
+## 精英：血量多一半，身形大一圈
+func make_elite() -> void:
+	elite = true
+	hp = int(ceil(hp * 1.5))
+
+
 func _sees_player() -> bool:
-	if not is_instance_valid(player):
+	if not is_instance_valid(player) or _grace > 0.0:
 		return false
 	var d := player.global_position - global_position
 	var sight := Vector2(220, 60) if kind == "rusher" else SIGHT
@@ -286,7 +296,7 @@ func _sees_player() -> bool:
 func _draw() -> void:
 	var white := _flash > 0.0
 	var fill := Color.WHITE if white else DARK
-	var s := 1.0 + _spawn_pop * 2.0
+	var s := (1.0 + _spawn_pop * 2.0) * (1.2 if elite else 1.0)
 	# 瞄准时身体后仰，冲锋蓄力时压低前倾
 	var lean := 0.0
 	if state == State.AIM:

@@ -80,7 +80,7 @@ func _ready() -> void:
 	var refl := Reflection.new()
 	refl.rig = player.rig
 	refl.body = player
-	refl.z_index = -2
+	refl.z_index = 1  # 画在地面方块之上（倒影在地面里），否则会被地面挡住
 	world.add_child(refl)
 	_foreground = CityBackdrop.make_foreground()
 	world.add_child(_foreground)
@@ -324,8 +324,9 @@ func _on_player_died() -> void:
 
 ## 训练三波打完：弹评级卡，然后进入生存模式
 func _on_training_clear() -> void:
-	var score: float = 1000.0 - run_time * 6.0 - stats.hits * 150.0 + stats.deflect * 80.0 + stats.parry * 100.0 + stats.perfect_dodge * 60.0
-	var grade := "S" if score >= 950.0 else ("A" if score >= 750.0 else ("B" if score >= 500.0 else "C"))
+	# 45 秒内打完不扣时间分；S 级大约要求一局里 3–4 次弹反/招架且不太挨打
+	var score: float = 1000.0 - maxf(0.0, run_time - 45.0) * 6.0 - stats.hits * 150.0 + stats.deflect * 80.0 + stats.parry * 100.0 + stats.perfect_dodge * 60.0
+	var grade := "S" if score >= 1200.0 else ("A" if score >= 950.0 else ("B" if score >= 700.0 else "C"))
 	hud.show_card(tr("RATE_TITLE") % grade, tr("RATE_BODY") % [Hud._fmt(run_time), stats.hits, stats.deflect, stats.parry, stats.perfect_dodge])
 	arena.start_survival()
 
@@ -334,6 +335,7 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("settings"):
 		settings_panel.visible = not settings_panel.visible
 		get_tree().paused = settings_panel.visible
+		TimeFx.reset()
 	if get_tree().paused:
 		return
 	if player.hp < _last_hp:

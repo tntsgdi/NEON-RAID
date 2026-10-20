@@ -72,7 +72,7 @@ func refresh(section_text: String, run_time: float, best: float, speed: float, f
 		right += "\n" + tr("HUD_SPEED") % int(round(speed)) + "\n" + tr(mode_key)
 	_speed.text = right
 	_speed.size.y = 40
-	_hint.text = tr("HUD_HINT")
+	_hint.text = tr("HUD_HINT_PAD") if Input.get_connected_joypads().size() > 0 else tr("HUD_HINT")
 	_finish.visible = finished and _card_time <= 0.0 and section_text == tr("SEC_7")
 	_finish.text = tr("HUD_FINISH") % _fmt(run_time)
 

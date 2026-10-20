@@ -115,12 +115,17 @@ func start_survival() -> void:
 func _spawn_survival_wave() -> void:
 	wave += 1
 	var count := mini(2 + (wave - 3) / 2, 7)
-	var spots := SPAWNS.duplicate()
+	# 离玩家太近的刷怪点不用，免得冲锋机直接刷在脸上
+	var spots := SPAWNS.filter(func(p): return not is_instance_valid(player) or p.distance_to(player.global_position) > 160.0)
+	if spots.is_empty():
+		spots = SPAWNS.duplicate()
 	spots.shuffle()
 	for i in count:
 		var kinds := ["gunner", "gunner", "burst", "rusher"]
 		var kind: String = kinds.pick_random()
-		spawn(spots[i % spots.size()], randf() < 0.25 + 0.03 * wave, 30.0, kind)
+		var e := spawn(spots[i % spots.size()], randf() < 0.1 + 0.02 * wave, 30.0, kind)
+		if wave % 5 == 0 and i == 0:
+			e.make_elite()
 	Audio.play("charge", -8.0)
 	Music.sting("wave")
 

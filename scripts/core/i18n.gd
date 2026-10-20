@@ -20,8 +20,8 @@ const STRINGS := {
 	"TIP_SHIELD": ["盾兵正面挡子弹：绕到背后，或者跳起来下劈（空中按住 S + 右键）", "Shields block shots from the front: get behind, or down-slash from above (S + RMB in the air)"],
 	"TIP_OVERCLOCK": ["神经超频！慢动作期间，下一击伤害翻倍", "NEURAL OVERCLOCK! Your next hit deals double damage"],
 	"HUD_HINT": [
-		"Esc 设置   R 重来   F1 调参   F2 English   F3 像素/高清   F4 切换场地（手感测试场 / 战斗训练场）   支持手柄",
-		"ESC SETTINGS   R RESTART   F1 TUNING   F2 中文   F3 PIXEL/HD   F4 SWITCH LEVEL (feel range / combat arena)   GAMEPAD OK",
+		"Esc 设置   R 重来",
+		"ESC SETTINGS   R RESTART",
 	],
 	"HUD_MODE_HD": ["高清渲染", "HD render"],
 	"HUD_MODE_PIXEL": ["像素渲染 640×360", "Pixel render 640x360"],
@@ -70,7 +70,12 @@ const STRINGS := {
 	"SET_glow": ["辉光", "Glow"],
 	"SET_music": ["音乐音量", "Music volume"],
 	"SET_sfx": ["音效音量", "SFX volume"],
-	"SET_HINT": ["Esc / 手柄 Start 关闭 · 设置会自动保存", "Esc / Start to close · saved automatically"],
+	"SET_HINT": ["Esc / 手柄 Start 关闭 · 设置会自动保存
+F4 切换场地（手感测试场 / 战斗训练场） · F2 English
+开发用：F1 调参 · F3 像素/高清", "Esc / Start to close · saved automatically
+F4 switch level (feel range / combat arena) · F2 中文
+Dev: F1 tuning · F3 pixel/HD"],
+	"HUD_HINT_PAD": ["Start 设置   Back 重来", "START SETTINGS   BACK RESTART"],
 	"RATE_TITLE": ["训练完成  评级 %s", "ARENA CLEAR  GRADE %s"],
 	"RATE_BODY": ["用时 %s   受击 %d   弹反 %d   招架 %d   精准闪避 %d\n生存模式开始：敌人会越来越多", "Time %s   Hits %d   Deflects %d   Parries %d   Perfect dodges %d\nSurvival begins: waves keep growing"],
 	"SURV_WAVE": ["生存模式 · 第 %d 波", "SURVIVAL · WAVE %d"],
