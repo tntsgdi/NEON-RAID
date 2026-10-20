@@ -14,6 +14,8 @@ const UPPER_ARM := 6.0
 const FOREARM := 6.0
 
 var kind := "gunner"
+## 盾兵：用更厚的重甲躯干
+var armored := false
 var controlled := false
 var flash := false
 var muzzle_world := Vector2.ZERO
@@ -187,31 +189,27 @@ func update(m: Dictionary, delta: float) -> void:
 	_head_rot += _head_v * delta
 	var hrot := deg_to_rad(_head_rot)
 	var head_c := neck + up * 4.5 + Vector2(1.5, 0).rotated(rot)
-	var red := Color(0.3, 1.1, 1.25) if controlled else Color(1.25, 0.26, 0.32)
-	var dark := Color(0.05, 0.14, 0.18) if controlled else Color(0.2, 0.05, 0.08)
-	var eye := Neon.CYAN_HOT if controlled else Neon.RED_HOT
 	wake = maxf(wake - delta, 0.0)
+	# 被夺：同一套贴图的青色版本（_p）；受击闪白：整体提亮
+	var sfx := "_p" if controlled else ""
+	var mod := Color(3.0, 3.0, 3.0) if flash else Color.WHITE
 	if wake > 0.0:
-		eye = Color(0.1, 0.25, 0.3).lerp(eye, pow(1.0 - wake / 0.35, 2.0))
-	var fill := Color.WHITE if flash else dark
-	var metal := Color(0.42, 0.38, 0.44)
+		mod = Color(0.5, 0.55, 0.6).lerp(Color.WHITE, pow(1.0 - wake / 0.35, 2.0))
 	_shapes.clear()
 
-	# 后腿、后臂
-	_leg(pelvis + Vector2(-1.5, 0), _feet[1], red.darkened(0.45), 3.5)
+	# 后腿、后臂（压暗一阶的贴图）
+	_leg(pelvis + Vector2(-1.5, 0), _feet[1], "_b" + sfx, mod)
 	var back_hand := shoulder + Vector2(-3, 7).rotated(rot * 0.5) + Vector2(sin(_phase * TAU) * 3.0 * ratio, 0)
 	if state == "charge":
 		back_hand = shoulder + Vector2(-8, 3).rotated(rot)
-	_arm(shoulder + Vector2(-1, 0), back_hand, red.darkened(0.45), 2.0)
-	# 躯干（梯形）
-	var w0 := 6.5
-	var w1 := 7.5
+	_part("arm_b" + sfx, shoulder + Vector2(-1, 0), (back_hand - shoulder).angle(), mod)
+	# 三连发：背后的弹鼓背包（先画，在躯干后面）
+	if kind == "burst":
+		_part("pack" + sfx, pelvis + up * 9.0 - side_v(rot) * 6.0, rot, mod)
+	# 躯干：竖着画的贴图，角度 = 倾斜；盾兵和冲锋机用更厚的重甲躯干
+	_part(("torso_h" if armored or kind == "rusher" else "torso") + sfx, pelvis, rot, mod)
 	var side := Vector2(1, 0).rotated(rot)
-	var torso := PackedVector2Array([pelvis - side * w0, pelvis + side * w0, neck + side * w1, neck - side * w1])
-	_shapes.append(["poly", torso, fill, red])
-	var body_r := Rect2(torso[0], Vector2.ZERO)
-	for p in torso:
-		body_r = body_r.expand(p)
+	var body_r := Rect2(pelvis - side * 6.5, Vector2.ZERO).expand(pelvis + side * 6.5).expand(neck + side * 7.5).expand(neck - side * 7.5)
 	var fx0 := minf(minf(_feet[0].x, _feet[1].x), pelvis.x) - 2.0
 	var fx1 := maxf(maxf(_feet[0].x, _feet[1].x), pelvis.x) + 3.0
 	parts_local = {
@@ -219,23 +217,15 @@ func update(m: Dictionary, delta: float) -> void:
 		"body": body_r,
 		"legs": Rect2(Vector2(fx0, minf(pelvis.y, -2.0)), Vector2(fx1 - fx0, maxf(-pelvis.y, 2.0))),
 	}
-	_shapes.append(["line", neck - side * (w1 + 1.0), neck - side * (w1 - 3.0), 3.0, metal])  # 肩甲
-	# 头 + 目镜（目镜朝瞄准方向偏一点）
-	var head := PackedVector2Array()
-	for c in [Vector2(-4.5, -4), Vector2(4.5, -4), Vector2(4.5, 4), Vector2(-4.5, 4)]:
-		head.append(head_c + c.rotated(hrot))
-	_shapes.append(["poly", head, fill, red])
-	var look := clampf(_aim.y * 2.0, -1.5, 1.5)
-	_shapes.append(["line", head_c + Vector2(0.5, -1.0 + look).rotated(hrot), head_c + Vector2(4.5, -1.0 + look).rotated(hrot), 2.0, Neon.WHITE_HOT if flash else eye])
+	# 头（轴心在脖子）
+	_part(("head_horn" if kind == "rusher" else "head") + sfx, neck, hrot, mod)
 	# 前腿
-	_leg(pelvis + Vector2(1.5, 0), _feet[0], red, 4.0)
+	_leg(pelvis + Vector2(1.5, 0), _feet[0], sfx, mod)
 	# 武器臂
 	if kind == "rusher":
 		# 冲锋机：两臂前伸护住撞角
 		var hand := shoulder + Vector2(9, 3).rotated(rot) if state in ["windup", "charge"] else shoulder + Vector2(3, 8).rotated(rot * 0.5)
-		_arm(shoulder + Vector2(1, 0), hand, red, 2.4)
-		var horn := PackedVector2Array([head_c + Vector2(3, -3).rotated(rot), head_c + Vector2(11, 1).rotated(rot), head_c + Vector2(3, 3).rotated(rot)])
-		_shapes.append(["poly", horn, metal, red])
+		_part("arm" + sfx, shoulder + Vector2(1, 0), (hand - shoulder).angle(), mod)
 		muzzle_world = to_global(hand)
 	else:
 		# 放下时枪口随步伐轻轻摆
@@ -243,20 +233,19 @@ func update(m: Dictionary, delta: float) -> void:
 		var r := _gun_raise * _gun_raise * (3.0 - 2.0 * _gun_raise)
 		var dir := rest_dir.slerp(_aim, r).normalized()
 		var hand := shoulder + dir * (UPPER_ARM + FOREARM - 2.0) - dir * _recoil * 3.0
-		_arm(shoulder + Vector2(1, 0), hand, red, 2.4)
-		var gun_end := hand + dir * 10.0
-		_shapes.append(["line", hand - dir * 2.0, gun_end, 3.2, metal])
-		if kind == "burst":
-			var n := Vector2(-dir.y, dir.x) * 2.5
-			_shapes.append(["line", hand + n, gun_end + n * 0.8, 2.0, metal])
+		_part("arm" + sfx, shoulder + Vector2(1, 0), (hand - shoulder).angle(), mod)
+		_part(("burst" if kind == "burst" else "rifle") + sfx, hand, dir.angle(), mod)
+		var gun_end := hand + dir * 11.0
 		muzzle_world = to_global(gun_end)
 		if state == "aim":
+			# 瞄准蓄力：枪口一个越来越亮的像素
 			var k: float = m.aim_k
-			_shapes.append(["dot", gun_end, 1.0 + 2.5 * k, Color(2.5 + k, 0.4 + 1.6 * k, 0.4 + 1.6 * k, 0.4 + 0.6 * k)])
+			_shapes.append(["px", gun_end, Color(2.5 + k, 0.4 + 1.6 * k, 0.4 + 1.6 * k, 0.4 + 0.6 * k)])
 	queue_redraw()
 
 
-func _leg(hip: Vector2, foot: Vector2, col: Color, width: float) -> void:
+## 两节 IK 腿（膝盖朝前）：大腿、小腿、靴子
+func _leg(hip: Vector2, foot: Vector2, sfx: String, mod: Color) -> void:
 	var d := hip.distance_to(foot)
 	var reach := THIGH + SHIN - 0.3
 	if d > reach:
@@ -266,36 +255,19 @@ func _leg(hip: Vector2, foot: Vector2, col: Color, width: float) -> void:
 	var dir := (foot - hip) / d
 	var along := (THIGH * THIGH - SHIN * SHIN + d * d) / (2.0 * d)
 	var h := sqrt(maxf(THIGH * THIGH - along * along, 0.0))
-	var knee := hip + dir * along - Vector2(-dir.y, dir.x) * h  # 膝盖朝前
-	_shapes.append(["polyline", PackedVector2Array([hip, knee, foot]), col, width])
-	_shapes.append(["line", foot + Vector2(-1.5, 0), foot + Vector2(3.0, 0), 2.0, col])
+	var knee := hip + dir * along - Vector2(-dir.y, dir.x) * h
+	_part("thigh" + sfx, hip, (knee - hip).angle(), mod)
+	_part("shin" + sfx, knee, (foot - knee).angle(), mod)
+	_part("boot" + sfx, foot, 0.0, mod)
 
 
-func _arm(shoulder: Vector2, hand: Vector2, col: Color, width: float) -> void:
-	var d := shoulder.distance_to(hand)
-	var reach := UPPER_ARM + FOREARM - 0.3
-	if d > reach:
-		hand = shoulder + (hand - shoulder).normalized() * reach
-		d = reach
-	d = maxf(d, 1.0)
-	var dir := (hand - shoulder) / d
-	var along := (UPPER_ARM * UPPER_ARM - FOREARM * FOREARM + d * d) / (2.0 * d)
-	var h := sqrt(maxf(UPPER_ARM * UPPER_ARM - along * along, 0.0))
-	var elbow := shoulder + dir * along + Vector2(-dir.y, dir.x) * h  # 肘朝下后
-	_shapes.append(["polyline", PackedVector2Array([shoulder, elbow, hand]), col, width])
+static func side_v(rot: float) -> Vector2:
+	return Vector2(1, 0).rotated(rot)
+
+
+func _part(name: String, pos: Vector2, angle: float, mod: Color) -> void:
+	_shapes.append(["part", "res://assets/sprites/trooper/" + name, pos, angle, mod])
 
 
 func _draw() -> void:
-	for s in _shapes:
-		match s[0]:
-			"poly":
-				draw_colored_polygon(s[1], s[2])
-				var o: PackedVector2Array = s[1].duplicate()
-				o.append(s[1][0])
-				draw_polyline(o, s[3], 1.3, true)
-			"line":
-				draw_line(s[1], s[2], s[4], s[3], true)
-			"polyline":
-				draw_polyline(s[1], s[2], s[3], true)
-			"dot":
-				draw_circle(s[1], s[2], s[3])
+	StriderRig.draw_shapes(self, _shapes)

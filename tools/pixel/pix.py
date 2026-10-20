@@ -195,3 +195,21 @@ def write_png(path, img):
 
 def scale_up(img, k):
     return np.repeat(np.repeat(img, k, axis=0), k, axis=1)
+
+
+def rim(img, color, dirs=((-1, 0), (0, -1))):
+    """边缘光：不透明像素里，朝 dirs 方向的邻居是透明的那些（背光一侧的外缘）改成 color。
+    面朝右画的部件，默认背面（左）和顶面加光——模拟身后霓虹打过来的轮廓光。"""
+    a = img[:, :, 3] > 0
+    h, w = a.shape
+    out = img.copy()
+    for y in range(h):
+        for x in range(w):
+            if not a[y, x]:
+                continue
+            for dx, dy in dirs:
+                nx, ny = x + dx, y + dy
+                if nx < 0 or ny < 0 or nx >= w or ny >= h or not a[ny, nx]:
+                    out[y, x] = rgba(color)
+                    break
+    return out

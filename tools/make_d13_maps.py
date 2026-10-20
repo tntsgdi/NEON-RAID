@@ -130,7 +130,7 @@ def r002():
     b.plat(6, 4, 8); b.on_plat(9, 4, "g"); b.at(20, "r"); b.floor(26)
     # 上 2：盾兵 + 三连发
     b.up(2, 4); b.at(10, "s"); b.at(18, "b"); b.at(14, "T", 5); b.floor(24)
-    b.at(2, "C"); b.floor(6)
+    b.at(2, "C"); b.at(0, "B"); b.at(3, "G"); b.floor(6)
     # 下 3：侦察机 + 射手 + 冲锋机
     b.down(3, 4); b.plat(12, 4, 6); b.at(8, "d", 6); b.on_plat(14, 4, "g"); b.at(22, "r"); b.floor(30)
     b.at(2, "C"); b.floor(6)

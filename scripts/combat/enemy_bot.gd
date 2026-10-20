@@ -88,6 +88,7 @@ func _ready() -> void:
 		fx_parent = get_parent()
 	rig = EnemyRig.new()
 	rig.kind = kind
+	rig.armored = shielded
 	rig.light_mask = Neon.ACTOR_LIGHT_MASK
 	add_child(rig)
 	hurtboxes = Hurtboxes.new()
@@ -599,12 +600,7 @@ func _bash() -> void:
 
 func _draw() -> void:
 	var red_c := Color(0.3, 1.1, 1.25) if controlled else RED
-	# 湿地面倒影：站在地上时，脚下一个翻转压扁的暗红剪影
-	if is_on_floor():
-		draw_set_transform(Vector2(0, 1), 0.0, Vector2(1.0, -0.5))
-		draw_rect(Rect2(-7, -30, 14, 30), Color(1.0, 0.2, 0.25, 0.12))
-		draw_rect(Rect2(-1, -24, 5, 2), Color(1.6, 0.3, 0.35, 0.25))
-	draw_set_transform(Vector2.ZERO)
+	# （湿地面倒影改由场景的积水反射统一处理）
 	# 身体由 EnemyRig 画（程序化动画骨架）
 	# 瞄准线：越接近开火越亮越粗，锁定后变白
 	if state == State.AIM:
@@ -626,10 +622,8 @@ func _draw() -> void:
 		draw_rect(Rect2(minf(0.0, facing * 200.0), -2, 200, 2), Color(2.0, 0.3, 0.35, 0.2 + 0.5 * k))
 	# 能量盾
 	if has_shield():
-		var sx := facing * 12.0
-		var sc := Color(1, 0.85, 0.85, 0.9) if _shield_flash > 0.0 else Color(1, 0.25, 0.3, 0.35)
-		var shield := PackedVector2Array([Vector2(sx - 2, -38), Vector2(sx + facing * 3, -30), Vector2(sx + facing * 3, -8), Vector2(sx - 2, -1), Vector2(sx - facing * 1, -20)])
-		draw_colored_polygon(shield, sc)
-		draw_polyline(shield + PackedVector2Array([shield[0]]), red_c, 1.0, true)
-		for i in shield_hp:
-			draw_rect(Rect2(sx - 0.5, -32 + i * 7, 2, 4), Color.WHITE)
+		# 塔盾（像素贴图）：完好 / 裂开 / 快碎三种状态；挨打时闪白
+		var state_name: String = ["shield_break", "shield_crack", "shield"][clampi(shield_hp - 1, 0, 2)]
+		var part := PixelPart.get_part("res://assets/sprites/trooper/" + state_name + ("_p" if controlled else ""))
+		var mod := Color(3.0, 3.0, 3.0) if _shield_flash > 0.0 else Color.WHITE
+		part.draw(self, Transform2D.IDENTITY, Vector2(facing * 10.0, -16.0), 0.0, facing < 0, mod)

@@ -1,51 +1,49 @@
 class_name Billboard
 extends Node2D
-## 环境文字：墙上的霓虹广告牌 / 终端，一两句政治讽刺。玩家走近时扫描线把字"打"出来，走远淡掉。
+## 环境文字的载体：墙上一块小小的像素终端屏（暗底、滚动的字形、一个闪烁的光标）。
+## 机体走近时，屏幕亮起，文字以"截获"的形式清晰地打印在界面左下角（HUD.terminal），每块屏只触发一次。
 
-const SHOW_DIST := 150.0
+const SHOW_DIST := 110.0
 
 var key := ""
-var _shown := 0.0
+var _on := 0.0
 var _t := 0.0
-var _label: Label
+var _fired := false
 
 
 func _ready() -> void:
 	z_index = -2
-	_label = Label.new()
-	_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	_label.text = tr(key)
-	_label.add_theme_font_size_override("font_size", 8)
-	_label.add_theme_color_override("font_color", Color(1.6, 0.6, 1.4))
-	_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_label.add_theme_constant_override("outline_size", 2)
-	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_label.size = Vector2(170, 30)
-	_label.position = Vector2(-85, -34)
-	_label.visible_ratio = 0.0
-	add_child(_label)
 
 
 func _process(delta: float) -> void:
 	_t += delta
 	var body := get_tree().get_first_node_in_group("controlled") as Node2D
 	var near := body != null and body.global_position.distance_to(global_position) < SHOW_DIST
-	_shown = move_toward(_shown, 1.0 if near else 0.0, delta * (2.5 if near else 1.2))
-	_label.visible_ratio = clampf(_shown * 1.3, 0.0, 1.0)
-	# 霓虹接触不良：偶尔闪一下
-	var flicker := 0.6 if fmod(_t * 3.7, 5.0) < 0.08 else 1.0
-	_label.modulate.a = clampf(_shown * 1.5, 0.0, 1.0) * flicker
+	_on = move_toward(_on, 1.0 if near else 0.0, delta * 3.0)
+	if near and not _fired:
+		_fired = true
+		get_tree().call_group("game", "env_text", tr(key))
 	queue_redraw()
 
 
 func _draw() -> void:
-	var a := 0.25 + 0.6 * _shown
-	var r := Rect2(-90, -38, 180, 38)
-	draw_rect(r, Color(0.06, 0.02, 0.06, 0.7 * a))
-	draw_rect(r, Color(1.4, 0.4, 1.2, 0.6 * a), false, 1.0)
-	draw_line(Vector2(-60, 0), Vector2(-60, 14), Color(0.3, 0.3, 0.35, a), 2.0)
-	draw_line(Vector2(60, 0), Vector2(60, 14), Color(0.3, 0.3, 0.35, a), 2.0)
-	if _shown > 0.0 and _shown < 1.0:
-		var x := lerpf(r.position.x, r.end.x, _shown)
-		draw_line(Vector2(x, r.position.y + 2), Vector2(x, r.end.y - 2), Color(2.0, 1.0, 1.8, 1.0 - _shown), 1.5)
+	# 16×10 的终端屏 + 支架
+	var r := Rect2(-8, -24, 16, 10)
+	draw_rect(Rect2(r.position - Vector2(1, 1), r.size + Vector2(2, 2)), Color(0.02, 0.025, 0.035))
+	draw_rect(r, Color(0.05, 0.03, 0.06))
+	var lit := 0.35 + 0.65 * _on
+	var col := Color(0.72, 0.2, 0.56) * lit
+	# 滚动的字形（每行几段短横）
+	var off := int(_t * 4.0)
+	for row in 3:
+		var y := r.position.y + 2 + row * 3
+		var x := r.position.x + 2
+		var k := (row * 7 + off) % 5
+		while x < r.end.x - 2:
+			var w := 1 + (k % 3)
+			draw_rect(Rect2(x, y, w, 1), col)
+			x += w + 1 + (k % 2)
+			k += 3
+	if fmod(_t, 0.8) < 0.4:
+		draw_rect(Rect2(r.end.x - 3, r.end.y - 3, 1, 2), Color(1.6, 0.6, 1.3) * lit)
+	draw_rect(Rect2(-1, -14, 2, 14), Color(0.12, 0.14, 0.18))

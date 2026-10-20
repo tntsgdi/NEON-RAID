@@ -314,21 +314,18 @@ func _draw() -> void:
 	if wild and int(_phase * 6.0) % 3 == 0:
 		col = Color(1.6, 1.7, 1.8)  # 失控：一闪一闪
 	var white := _flash > 0.0 or (controlled and _iframes > 0.0 and int(_iframes * 20.0) % 2 == 0)
-	var tilt := clampf(velocity.x / 900.0, -0.35, 0.35)
-	draw_set_transform(Vector2(0, sin(_phase * 3.0) * 1.0), tilt, Vector2.ONE * DRAW_SCALE)
-	var body := PackedVector2Array([Vector2(-9, -1), Vector2(-5, -5), Vector2(5, -5), Vector2(9, -1), Vector2(5, 4), Vector2(-5, 4)])
-	draw_colored_polygon(body, Color.WHITE if white else Color(0.08, 0.06, 0.08) if not controlled else Color(0.05, 0.14, 0.18))
-	draw_polyline(body + PackedVector2Array([body[0]]), col, 1.2, true)
-	# 旋翼：两条快速闪动的横线
-	var spin := absf(sin(_phase * 40.0))
-	draw_line(Vector2(-12 * spin, -7), Vector2(-2, -7), Color(col, 0.7), 1.0, true)
-	draw_line(Vector2(2, -7), Vector2(12 * spin, -7), Color(col, 0.7), 1.0, true)
-	draw_line(Vector2(-5, -5), Vector2(-5, -7), col, 1.0)
-	draw_line(Vector2(5, -5), Vector2(5, -7), col, 1.0)
-	# 眼 / 炮口
-	var eye := Neon.CYAN_HOT if controlled else (Neon.RED_HOT if not wild else Color(1.4, 1.5, 1.6))
-	draw_circle(Vector2(facing * 3, 0), 1.6, eye)
-	draw_set_transform(Vector2.ZERO)
+	# 像素贴图：机身随速度倾斜、上下轻轻浮动；旋翼 4 帧；红 = 敌对，青 = 被夺，白 = 失控（可夺）
+	var tilt := clampf(velocity.x / 900.0, -0.35, 0.35) * float(facing)
+	var bob := Vector2(0, round(sin(_phase * 3.0)))
+	var sfx := "_p" if controlled else ("_w" if wild and int(_phase * 6.0) % 3 != 0 else "")
+	var mod := Color(3.0, 3.0, 3.0) if white else Color.WHITE
+	var flip := facing < 0
+	var dir := "res://assets/sprites/drone/"
+	var frame := int(_phase * 30.0) % 4
+	for x in [-7.0, 7.0]:
+		PixelPart.get_part(dir + "rotor%d" % frame).draw(self, Transform2D.IDENTITY, bob + Vector2(x, -6).rotated(tilt * float(facing)), 0.0, flip, mod)
+	PixelPart.get_part(dir + "hull" + sfx).draw(self, Transform2D.IDENTITY, bob, tilt, flip, mod)
+	PixelPart.get_part(dir + "pod" + sfx).draw(self, Transform2D.IDENTITY, bob + Vector2(0, 5).rotated(tilt * float(facing)), tilt, flip, mod)
 	if not controlled and _mode == "aim":
 		var k := 1.0 - _t / AIM_TIME
 		draw_line(gun_pos() - global_position, gun_pos() - global_position + _aim * 260.0, Color(1.2, 0.2, 0.25, 0.1 + 0.25 * k), 1.0)

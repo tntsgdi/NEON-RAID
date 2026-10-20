@@ -14,6 +14,8 @@ var possess_range: PossessRange
 var region: Region
 var region_index := -1
 var title: TitleMenu
+## 拍展示截图时隐藏界面
+var hide_hud := false
 ## 区域打完后自动进下一个区域的倒计时（真实时间，< 0 = 没在倒计时）
 var _advance_t := -1.0
 var _last_cp := Vector2.INF
@@ -81,7 +83,8 @@ func _ready() -> void:
 	world = Node2D.new()
 	world.name = "World"
 	add_child(world)
-	world.add_child(CityBackdrop.make())
+	var backdrop := CityBackdrop.make()
+	world.add_child(backdrop)
 	player = Player.new()
 	player.fx_parent = world
 	player.impact.connect(_on_impact)
@@ -102,14 +105,11 @@ func _ready() -> void:
 	world.add_child(_rain)
 	_splash = _make_splash()
 	world.add_child(_splash)
-	var refl := Reflection.new()
-	refl.rig = player.rig
-	refl.body = player
-	refl.z_index = 1  # 画在地面方块之上（倒影在地面里），否则会被地面挡住
-	world.add_child(refl)
+	# 旧的"复制骨架图形画倒影"已停用：像素部件按世界像素格绘制，不能再整体翻转压扁；
+	# 积水倒影改由场景的屏幕空间反射统一处理（见 scripts/level/street_set.gd）
 	_foreground = CityBackdrop.make_foreground()
 	world.add_child(_foreground)
-	Neon.add_light(player, Neon.CYAN, 0.35, 2.0, Vector2(0, -18))
+	Neon.add_light(player, Neon.CYAN, 0.2, 1.1, Vector2(0, -18))
 	camera = Camera2D.new()
 	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	world.add_child(camera)
@@ -212,14 +212,15 @@ func _setup_glow() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_CANVAS
 	e.glow_enabled = true
-	e.glow_intensity = 0.42
+	e.glow_intensity = 0.22
 	e.glow_strength = 1.0
 	e.glow_bloom = 0.0
 	e.glow_hdr_threshold = 1.0
 	e.glow_hdr_scale = 2.0
 	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	for lv in 7:
-		e.set_glow_level(lv, lv in [2, 3, 4])
+		# 像素画面：只用小半径的辉光（1–2 级），发光像素周围一圈，不糊成大光晕
+		e.set_glow_level(lv, lv in [1, 2])
 	env.environment = e
 	add_child(env)
 	_env = e
@@ -230,7 +231,12 @@ func _make_rain() -> CPUParticles2D:
 	var r := CPUParticles2D.new()
 	r.amount = 220
 	r.lifetime = 0.7
-	r.texture = Neon.streak_texture()
+	# 像素雨丝：1 像素宽、5 像素长，雨点在原生像素格上落下
+	var img := Image.create(1, 5, false, Image.FORMAT_RGBA8)
+	for y in 5:
+		img.set_pixel(0, y, Color(0.6, 0.75, 0.9, 0.35 + 0.13 * y))
+	r.texture = ImageTexture.create_from_image(img)
+	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	r.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	r.emission_rect_extents = Vector2(420, 10)
 	r.direction = Vector2(-0.18, 1.0)
@@ -239,9 +245,9 @@ func _make_rain() -> CPUParticles2D:
 	r.initial_velocity_min = 700.0
 	r.initial_velocity_max = 900.0
 	r.particle_flag_align_y = true
-	r.scale_amount_min = 0.6
-	r.scale_amount_max = 1.2
-	r.color = Color(0.55, 0.85, 1.0, 0.22)
+	r.scale_amount_min = 1.0
+	r.scale_amount_max = 1.0
+	r.color = Color(1, 1, 1, 0.5)
 	r.local_coords = false
 	r.z_index = -5
 	return r
@@ -278,6 +284,11 @@ func shockwave(world_pos: Vector2) -> void:
 
 
 ## 色差脉冲（重击、受伤、神经超频）
+## 环境文字（Billboard 走近时调用）
+func env_text(text: String) -> void:
+	hud.terminal(text)
+
+
 ## 其他机体（重装机等）也能震屏
 func impact(strength: float, dir: Vector2) -> void:
 	_on_impact(strength, dir)
@@ -332,6 +343,9 @@ func load_level(kind: String, index := 0) -> void:
 		level = range_
 	world.add_child(level)
 	world.move_child(level, 1)  # 在远景之上、机体之下
+	# 第 1 关的区域有自己的正式像素背景；训练场继续用灰盒远景
+	world.get_node("Backdrop").visible = region == null
+	_foreground.visible = region == null
 	var lim: Rect2 = level.limits()
 	camera.limit_left = int(lim.position.x)
 	camera.limit_top = int(lim.position.y)
@@ -503,7 +517,7 @@ func _on_training_clear() -> void:
 
 
 func _process(delta: float) -> void:
-	hud.visible = not title.visible
+	hud.visible = not title.visible and not hide_hud
 	if Input.is_action_just_pressed("settings") and (not title.visible or settings_panel.is_open):
 		settings_panel.toggle()
 		get_tree().paused = settings_panel.is_open or title.visible
@@ -575,7 +589,7 @@ func _process(delta: float) -> void:
 	# 风声：越快越响
 	var wind_k := clampf(bvel.length() / Tuning.v.sprint_speed, 0.0, 1.3)
 	_wind.volume_db = linear_to_db(maxf(pow(wind_k, 2.0) * 0.9, 0.0001)) - 4.0
-	_env.glow_intensity = 0.42 * Settings.v.glow
+	_env.glow_intensity = 0.22 * Settings.v.glow
 	_rain.emitting = Settings.v.rain > 0.5
 	_splash.emitting = Settings.v.rain > 0.5
 	_post.set_shader_parameter("shock_t", _shock_t)
@@ -617,7 +631,7 @@ func _physics_process(delta: float) -> void:
 	var body := _body()
 	var bvel: Vector2 = body.velocity if "velocity" in body else Vector2.ZERO
 	_look = lerpf(_look, clampf(bvel.x * T.camera_look_ahead, -170.0, 170.0), 1.0 - exp(-5.0 * delta))
-	var target := body.global_position + Vector2(_look, -40.0)
+	var target := body.global_position + Vector2(_look, -56.0)
 	if is_instance_valid(controller.flow) and not controller.flow.done:
 		target = controller.flow.global_position + Vector2(0, -22.0)
 	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-12.0 * delta))

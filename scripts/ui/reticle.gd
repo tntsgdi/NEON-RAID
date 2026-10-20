@@ -47,7 +47,7 @@ func _draw() -> void:
 	if _shown <= 0.0:
 		return
 	var ready := cooldown_k <= 0.0
-	var col := Color(2.0, 2.1, 2.2, _shown) if in_range and ready else Color(0.6, 0.65, 0.7, 0.6 * _shown)
+	var col := Color(1.15, 1.2, 1.25, _shown) if in_range and ready else Color(0.6, 0.65, 0.7, 0.6 * _shown)
 	var pulse := 1.0 + (0.08 * sin(_t * 10.0) if in_range and ready else 0.0)
 	var h := _size * 0.5 * pulse
 	var p := _pos

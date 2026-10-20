@@ -32,6 +32,8 @@ var _relays: Array = []
 var _texts: Array = []       # [位置, key]
 var _keys: Array = []        # [字符, 位置, 机体]
 var _rows: Array = []
+## 场景装饰（岗亭 B、闸门 G、路灯 L），StreetSet 读取
+var decor: Array = []
 var _base := 0
 const KEY_CHARS := ["h", "k", "w"]
 
@@ -44,6 +46,8 @@ func _init(i: int = 0) -> void:
 
 func _ready() -> void:
 	Blocks.build(self, solids)
+	# 正式像素场景（地图块、视差背景、道具）；旧的灰盒方块不再画
+	StreetSet.build(self)
 	for p in _relays:
 		var r := Relay.new()
 		r.position = p
@@ -101,6 +105,8 @@ func _parse(rows: Array) -> void:
 					_tips.append([c * CELL, ""])
 				"g", "b", "r", "s", "d", "w", "H", "h", "k":
 					_spawns.append([ch, pos])
+				"B", "G", "L":
+					decor.append([ch, pos])
 			c += 1
 		# 竖直合并：和上一行完全相同的条延长，否则结束
 		for k in runs.keys():
@@ -165,7 +171,7 @@ func start_pos() -> Vector2:
 
 
 func limits() -> Rect2:
-	return Rect2(_bounds.position, _bounds.size + Vector2(0, 120))
+	return Rect2(_bounds.position, _bounds.size)
 
 
 func pit_y() -> float:
@@ -291,7 +297,6 @@ func _physics_process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	Blocks.draw(self, solids)
 	# 出口线：青色斜纹
 	for i in 14:
 		var c := Color(0.25, 0.9, 1.0, 0.8) if i % 2 == 0 else Color(0.05, 0.25, 0.3, 0.8)

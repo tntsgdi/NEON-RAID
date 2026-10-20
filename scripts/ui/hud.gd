@@ -45,6 +45,9 @@ var _shell_wipe := 1.0
 var _oc_age := 0.0
 var _toast: Label
 var _toast_t := 0.0
+## 环境文字（路过终端 / 广告屏时截获的一句话）：左下角，打字机式打印，几秒后淡出
+var _term: Label
+var _term_t := 0.0
 var _t := 0.0
 ## 夺壳冷却剩余比例（1 = 刚夺完）；冷却结束那一刻"叮"一声
 var possess_k := 0.0:
@@ -92,6 +95,10 @@ func _ready() -> void:
 	_toast.size.x = 200
 	_toast.add_theme_color_override("font_color", Color(0.6, 1.6, 1.8))
 	_toast.visible = false
+	_term = _label(Vector2(10, 318), 8, HORIZONTAL_ALIGNMENT_LEFT)
+	_term.size.x = 420
+	_term.add_theme_color_override("font_color", Color(1.3, 0.75, 1.25))
+	_term.visible = false
 
 
 func _label(pos: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
@@ -143,6 +150,14 @@ func toast(text: String) -> void:
 	_toast.visible = true
 	_toast_t = 1.6
 	Audio.play("ui_ready", -10.0, 0.8)
+
+
+## 环境文字：前面带一个"截获"标记，逐字打印
+func terminal(text: String) -> void:
+	_term.text = "▍" + tr("HUD_INTERCEPT") + "  " + text
+	_term.visible = true
+	_term.visible_ratio = 0.0
+	_term_t = 5.0
 
 
 ## 屏幕下方的提示：切角面板滑入，显示几秒后滑出
@@ -199,6 +214,11 @@ func _process(delta: float) -> void:
 		_tip.position.y = 300.0 + (1.0 - vis) * 22.0
 		_tip.modulate.a = vis
 		_tip.visible = _tip_time > 0.0
+	if _term_t > 0.0:
+		_term_t -= real
+		_term.visible_ratio = minf(_term.visible_ratio + real * 1.6, 1.0)
+		_term.modulate.a = clampf(_term_t / 0.6, 0.0, 1.0)
+		_term.visible = _term_t > 0.0
 	if _toast_t > 0.0:
 		_toast_t -= real
 		_toast.visible_ratio = clampf((1.6 - _toast_t) / 0.25, 0.0, 1.0)

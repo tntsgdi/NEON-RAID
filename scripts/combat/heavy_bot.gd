@@ -13,7 +13,7 @@ signal died(bot: HeavyBot)
 
 enum State { PATROL, WINDUP_RAM, RAM, WINDUP_SLAM, SLAM, RECOVER, STUNNED, PARKED, DEAD }
 
-const SIZE := Vector2(24, 42)
+const SIZE := Vector2(34, 60)
 const GRAVITY := 1600.0
 const WALK := 32.0
 const CONTROL_HP := 6
