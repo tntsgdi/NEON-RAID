@@ -42,7 +42,6 @@ var _home := Vector2.ZERO
 var _t := 0.0
 var _flash := 0.0
 var _shield_flash := 0.0
-var _walk_phase := 0.0
 var _spawn_pop := 0.25
 ## 出场时间：刚刷出来的 0.7 秒里不会发现玩家、不会攻击
 var _grace := 0.7
@@ -62,6 +61,8 @@ var _iframes := 0.0
 var _hop_t := 0.0
 var _ram_t := 0.0
 var _ram_hit := {}
+var _gun_hot := 0.0
+var rig: EnemyRig
 
 
 func _ready() -> void:
@@ -82,6 +83,10 @@ func _ready() -> void:
 		hp = 3
 	if fx_parent == null:
 		fx_parent = get_parent()
+	rig = EnemyRig.new()
+	rig.kind = kind
+	rig.light_mask = Neon.ACTOR_LIGHT_MASK
+	add_child(rig)
 	light_mask = Neon.ACTOR_LIGHT_MASK
 	Neon.add_light(self, Neon.RED, 0.3, 1.0, Vector2(0, -22))
 
@@ -99,6 +104,8 @@ func center() -> Vector2:
 
 
 func gun_pos() -> Vector2:
+	if rig != null and rig.muzzle_world != Vector2.ZERO:
+		return rig.muzzle_world
 	return global_position + Vector2(facing * 10, -27)
 
 
@@ -148,6 +155,8 @@ func take_hit(dir: Vector2, power: int, hit_kind := "slash") -> int:
 	else:
 		state = State.STAGGER
 		_t = 0.35
+	if rig != null:
+		rig.hit(dir.x, power, state == State.AIR)
 	if hp <= 0:
 		_die(dir)
 	return 1
@@ -158,6 +167,8 @@ func _parried(dir: Vector2) -> void:
 	_t = 1.0
 	velocity = Vector2(signf(dir.x) * 260.0, -160.0)
 	_flash = 0.12
+	if rig != null:
+		rig.hit(dir.x, 2, false)
 	Fx.sparks(fx_parent, center(), dir, 16, Neon.WHITE_HOT)
 	Audio.play("deflect", -2.0, 0.85)
 	get_tree().call_group("game", "shockwave", center())
@@ -237,6 +248,7 @@ func _physics_process(delta: float) -> void:
 				state = State.STAGGER
 				_t = 0.25
 	move_and_slide()
+	_update_rig(delta)
 	queue_redraw()
 
 
@@ -258,7 +270,6 @@ func _patrol(delta: float) -> void:
 	elif is_on_wall():
 		facing = -facing
 	velocity.x = facing * WALK
-	_walk_phase += delta * 9.0
 
 
 func _aim(delta: float) -> void:
@@ -277,6 +288,7 @@ func _aim(delta: float) -> void:
 			Bullet.fire(fx_parent, gun_pos(), aim_dir * 260.0, Bullet.Team.ENEMY, 1, self)
 			Audio.play("enemy_shot", -6.0)
 		Fx.sparks(fx_parent, gun_pos(), aim_dir, 5, RED)
+		rig.fire()
 		state = State.COOLDOWN
 		_t = 1.6 if kind == "burst" else 1.1
 
@@ -284,7 +296,6 @@ func _aim(delta: float) -> void:
 func _charge(delta: float) -> void:
 	velocity.x = facing * 420.0
 	_t -= delta
-	_walk_phase += delta * 24.0
 	var t := _tgt()
 	if not _hit_player and t != null and hurt_rect().grow(2.0).intersects(t.hurt_rect()):
 		_hit_player = true
@@ -379,6 +390,7 @@ func melee_hit(dir: Vector2, dmg: int) -> void:
 func _controlled_hurt(dir: Vector2, dmg: int) -> void:
 	hp -= dmg
 	_flash = 0.1
+	rig.hit(dir.x, dmg, false)
 	_iframes = 0.5
 	velocity = Vector2(signf(dir.x) * 200.0, -160.0)
 	Audio.play("hurt", -4.0)
@@ -412,7 +424,6 @@ func _controlled_physics(delta: float) -> void:
 			velocity.x = move_toward(velocity.x, dir * top, (1400.0 if dir != 0 else 1800.0) * delta)
 		if dir != 0:
 			facing = dir
-			_walk_phase += delta * absf(velocity.x) / 12.0
 		if input.jump_pressed and is_on_floor():
 			velocity.y = -400.0
 		if input.dash_pressed and _hop_t <= 0.0:
@@ -424,7 +435,49 @@ func _controlled_physics(delta: float) -> void:
 		if input.slash_pressed and _bash_cd <= 0.0:
 			_bash()
 	aim_dir = aim
+	_gun_hot = maxf(_gun_hot - delta, 0.0)
 	move_and_slide()
+	_update_rig(delta)
+
+
+func _update_rig(delta: float) -> void:
+	var mode := "idle"
+	if controlled:
+		if _ram_t > 0.0:
+			mode = "charge"
+		elif not is_on_floor():
+			mode = "air"
+		elif _hop_t > 0.0:
+			mode = "hop"
+		elif absf(velocity.x) > 5.0:
+			mode = "walk"
+	else:
+		match state:
+			State.PATROL:
+				mode = "walk" if absf(velocity.x) > 5.0 else "idle"
+			State.AIM:
+				mode = "aim"
+			State.STAGGER:
+				mode = "stagger"
+			State.AIR:
+				mode = "air"
+			State.WINDUP:
+				mode = "windup"
+			State.CHARGE:
+				mode = "charge"
+	var s := (1.0 + _spawn_pop * 2.0) * (1.2 if elite else 1.0)
+	rig.scale = Vector2(facing * s, s)
+	rig.controlled = controlled
+	rig.flash = _flash > 0.0 or (controlled and _iframes > 0.0 and int(_iframes * 20.0) % 2 == 0)
+	var a := aim_dir if (state == State.AIM or controlled) else Vector2(facing, 0.3).normalized()
+	rig.update({
+		"state": mode,
+		"facing": facing,
+		"vel": velocity,
+		"aim": a,
+		"aim_k": clampf(1.0 - _t / aim_time(), 0.0, 1.0) if state == State.AIM else 0.0,
+		"weapon_hot": _gun_hot > 0.0 or (controlled and input != null and not input.aim_keys),
+	}, delta)
 
 
 func _controlled_aim() -> Vector2:
@@ -459,13 +512,14 @@ func _fire(aim: Vector2) -> void:
 			_weapon_cd = 0.35
 			Audio.play("shot", -4.0, 0.8)
 	Fx.sparks(fx_parent, gun_pos(), aim, 5, Neon.CYAN_HOT)
+	rig.fire()
+	_gun_hot = 0.8
 
 
 ## 冲锋机被夺后的主武器：向前冲撞，撞到的敌人各吃 2 点
 func _ram(delta: float) -> void:
 	_ram_t -= delta
 	velocity.x = facing * 520.0
-	_walk_phase += delta * 24.0
 	for n in get_tree().get_nodes_in_group("hittable"):
 		if _ram_hit.has(n) or (n.has_method("alive") and not n.alive()):
 			continue
@@ -498,62 +552,14 @@ func _bash() -> void:
 
 
 func _draw() -> void:
-	var white := _flash > 0.0 or (controlled and _iframes > 0.0 and int(_iframes * 20.0) % 2 == 0)
 	var red_c := Color(0.3, 1.1, 1.25) if controlled else RED
-	var eye_c := Neon.CYAN_HOT if controlled else EYE
-	var dark_c := Color(0.05, 0.14, 0.18) if controlled else DARK
-	var fill := Color.WHITE if white else dark_c
-	var s := (1.0 + _spawn_pop * 2.0) * (1.2 if elite else 1.0)
-	# 瞄准时身体后仰，冲锋蓄力时压低前倾
-	var lean := 0.0
-	if state == State.AIM:
-		lean = -0.1 * facing
-	elif state == State.WINDUP:
-		lean = 0.25 * facing
-	elif state == State.CHARGE:
-		lean = 0.35 * facing
 	# 湿地面倒影：站在地上时，脚下一个翻转压扁的暗红剪影
 	if is_on_floor():
 		draw_set_transform(Vector2(0, 1), 0.0, Vector2(1.0, -0.5))
 		draw_rect(Rect2(-7, -30, 14, 30), Color(1.0, 0.2, 0.25, 0.12))
 		draw_rect(Rect2(-1, -24, 5, 2), Color(1.6, 0.3, 0.35, 0.25))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2(s, s))
-	# 腿：两节，走路时交替
-	var step := sin(_walk_phase) * 3.0 if state in [State.PATROL, State.CHARGE] else 0.0
-	for side in [-1, 1]:
-		var hip := Vector2(side * 3, -13)
-		var foot := Vector2(side * 3 + step * side, 0)
-		var knee := (hip + foot) * 0.5 + Vector2(facing * 2.5, 0)
-		draw_polyline(PackedVector2Array([hip, knee, foot]), red_c.darkened(0.2 if side < 0 else 0.0), 2.5, true)
-	draw_set_transform(Vector2(0, -13), lean + _recoil * 0.06, Vector2(s, s))
-	# 躯干（梯形）与肩甲
-	var body := PackedVector2Array([Vector2(-7, 0), Vector2(7, 0), Vector2(8, -17), Vector2(-8, -17)])
-	draw_colored_polygon(body, fill)
-	draw_polyline(body + PackedVector2Array([body[0]]), red_c, 1.5, true)
-	draw_rect(Rect2(-facing * 10 - 3, -18, 6, 5), METAL)
-	# 头与目镜
-	var head := Rect2(-5, -25, 10, 8)
-	draw_rect(head, fill)
-	draw_rect(head, red_c, false, 1.5)
-	var eye_on := state in [State.AIM, State.WINDUP, State.CHARGE] and int(_t * 20.0) % 2 == 0
-	draw_rect(Rect2(0 if facing > 0 else -5, -23, 5, 2), Neon.WHITE_HOT if (white or eye_on) else eye_c)
-	# 武器
-	var g := Vector2(facing * 8, -13)
-	if kind == "rusher":
-		# 冲锋机：前伸的撞角
-		var horn := PackedVector2Array([Vector2(facing * 6, -14), Vector2(facing * 15, -9), Vector2(facing * 6, -5)])
-		draw_colored_polygon(horn, METAL)
-		draw_polyline(horn, red_c, 1.0, true)
-	else:
-		var dir := aim_dir if state == State.AIM else Vector2(facing, 0.25).normalized()
-		draw_line(g, g + dir * 10.0, METAL, 3.0, true)
-		if kind == "burst":
-			draw_line(g + Vector2(0, 3), g + Vector2(0, 3) + dir * 9.0, METAL, 2.0, true)
-		# 开火前枪口越来越亮
-		if state == State.AIM:
-			var k := 1.0 - _t / aim_time()
-			draw_circle(g + dir * 10.0, 1.0 + 2.5 * k, Color(2.5 + k, 0.4 + 1.6 * k, 0.4 + 1.6 * k, 0.4 + 0.6 * k))
 	draw_set_transform(Vector2.ZERO)
+	# 身体由 EnemyRig 画（程序化动画骨架）
 	# 瞄准线：越接近开火越亮越粗，锁定后变白
 	if state == State.AIM:
 		var gp := gun_pos() - global_position

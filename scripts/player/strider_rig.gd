@@ -128,7 +128,7 @@ func update(m: Dictionary, delta: float) -> void:
 	target_angle += clampf(m.accel_x * m.facing * 0.012, -14.0, 16.0)
 	target_y += m.land_squash * 7.0
 	if m.slash_step >= 0:
-		target_angle += _slash_twist(m.slash_t)
+		target_angle += _slash_twist(m.slash_step, m.slash_t)
 	var k_angle := 260.0 if state != "dash" else 600.0
 	_hull_vel += ((target_angle - hull_angle) * k_angle - _hull_vel * 24.0) * delta
 	hull_angle += _hull_vel * delta
@@ -313,27 +313,33 @@ func _add_leg(l: Array, fill: Color, edge: Color) -> void:
 	_shapes.append(["line", l[3], l[3] + Vector2(3, 0), 2.0, edge])
 
 
-## 挥刀：0–15% 回拉蓄力，15–55% 劈过去并挥过头，之后收回到终点
+## 挥刀：第一刀 0–15% 回拉蓄力，然后劈过去并挥过头，最后收回到终点。
+## 连击的第二、三刀不再回拉：接着上一刀的收势直接劈出去，整串连起来不顿。
 func _slash_arc(step: int, t: float) -> float:
 	var s: Dictionary = SLASH[step]
 	var sgn := signf(s.to - s.from)
-	if t < 0.15:
-		return s.from - sgn * 18.0 * (t / 0.15)
-	if t < 0.55:
-		var u := (t - 0.15) / 0.4
+	var wind := 0.15 if step == 0 else 0.0
+	var pull := 18.0 if step == 0 else 0.0
+	if t < wind:
+		return s.from - sgn * pull * (t / wind)
+	var strike_end := wind + 0.4
+	if t < strike_end:
+		var u := (t - wind) / 0.4
 		var e := 1.0 - pow(1.0 - u, 3.0)
-		return lerpf(s.from - sgn * 18.0, s.to + sgn * s.over, e)
-	var v := (t - 0.55) / 0.45
+		return lerpf(s.from - sgn * pull, s.to + sgn * s.over, e)
+	var v := (t - strike_end) / (1.0 - strike_end)
 	return lerpf(s.to + sgn * s.over, s.to, v * v)
 
 
-## 挥刀时全身扭转：蓄力往后仰，劈下时往前压
-func _slash_twist(t: float) -> float:
-	if t < 0.15:
-		return -10.0 * (t / 0.15)
-	if t < 0.55:
-		return lerpf(-10.0, 16.0, (t - 0.15) / 0.4)
-	return lerpf(16.0, 0.0, (t - 0.55) / 0.45)
+## 挥刀时全身扭转：蓄力往后仰，劈下时往前压（连击的后两刀不再后仰）
+func _slash_twist(step: int, t: float) -> float:
+	var wind := 0.15 if step == 0 else 0.0
+	var back := -10.0 if step == 0 else 4.0
+	if t < wind:
+		return back * (t / wind)
+	if t < wind + 0.4:
+		return lerpf(back, 16.0, (t - wind) / 0.4)
+	return lerpf(16.0, 0.0, (t - wind - 0.4) / (1.0 - wind - 0.4))
 
 
 func _step_cables(anchors: Array, local_vel: Vector2, delta: float) -> void:

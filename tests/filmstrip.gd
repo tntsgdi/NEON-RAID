@@ -44,14 +44,9 @@ func _run() -> void:
 	_drive(Vector2(300, 0), Vector2(260, 0), [{"frames": 30, "move": R, "press": ["jump"], "hold": ["jump"]}, {"frames": 1, "move": R, "press": ["dash"]}, {"frames": 9999, "move": R}])
 	await _strip("eval_jump_dash.png", 8, 5)
 
-	# 爬墙
-	var climb := []
-	for i in 6:
-		climb.append({"frames": 1, "move": R, "press": ["jump"], "hold": ["jump"]})
-		climb.append({"frames": 26, "move": R, "hold": ["jump"]})
-	climb.append({"frames": 9999, "move": R})
-	_drive(Vector2(2055, 0), Vector2.ZERO, climb)
-	await _strip("eval_wall.png", 8, 8)
+	# 墙面行走：从地面走上竖井右墙，到顶翻上平台
+	_drive(Vector2(2000, 0), Vector2.ZERO, [{"frames": 9999, "move": R, "walk": true}])
+	await _strip("eval_wall.png", 10, 26)
 
 	# 走路上台阶（不跳）
 	_drive(Vector2(700, 0), Vector2.ZERO, [{"frames": 9999, "move": R, "walk": true}])

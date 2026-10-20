@@ -37,6 +37,7 @@ func _run() -> void:
 	await _tunnel()
 	await _gap()
 	await _shaft()
+	await _wall_walk()
 	await _slash()
 
 	if failures.is_empty():
@@ -186,10 +187,11 @@ func _gap() -> void:
 	var plain := [
 		{"until": func(p): return p.global_position.x >= 1592.0, "max": 120, "move": R},
 		{"frames": 40, "move": R, "press": ["jump"], "hold": ["jump"]},
-		{"until": func(p): return p.is_on_floor() or p.global_position.y > 150.0, "max": 300, "move": R},
+		{"until": func(p): return (p.is_on_floor() and p.global_position.x > 1810.0) or p.global_position.y > 150.0, "max": 400, "move": R},
 	]
 	var log := await _drive(Vector2(1545, 0), plain, Vector2(260, 0))
-	_check(log[-1].pos.y > 100.0, "只跳不冲刺会掉进深沟（y=%.0f）" % log[-1].pos.y)
+	# 墙面如履平地：跳不过去也能扒住对岸的侧壁走上来
+	_check(log[-1].pos.y < 5.0 and log[-1].pos.x > 1810.0, "只跳不冲刺，扒住对岸的墙走上来（%s）" % str(log[-1].pos.round()))
 	var dash := [
 		{"until": func(p): return p.global_position.x >= 1592.0, "max": 120, "move": R},
 		{"frames": 34, "move": R, "press": ["jump"], "hold": ["jump"]},
@@ -198,6 +200,20 @@ func _gap() -> void:
 	]
 	log = await _drive(Vector2(1545, 0), dash, Vector2(260, 0))
 	_check(log[-1].pos.y < 5.0 and log[-1].pos.x > 1810.0, "跳+空中冲刺越过深沟（落点 %s）" % str(log[-1].pos.round()))
+
+
+## 墙面行走：从地面直接走上竖井右墙、到顶翻上平台（不按跳）
+func _wall_walk() -> void:
+	var log := await _drive(Vector2(2000, 0), [{"until": func(p): return p.is_on_floor() and p.global_position.y < -250.0, "max": 400, "move": R, "walk": true}])
+	var top: Dictionary = log[-1]
+	_check(top.pos.y <= -255.0 and top.floor, "不按跳，走着就沿墙走上竖井顶（%s，%d 帧）" % [str(top.pos.round()), log.size()])
+	# 墙上不按方向：扒住不滑
+	log = await _drive(Vector2(2058, -150), [{"frames": 20, "move": R}, {"frames": 40}])
+	var y0: float = log[20].pos.y
+	_check(absf(log[-1].pos.y - y0) < 3.0 and log[-1].state == WALL, "墙上松手扒住不滑（%.0f→%.0f）" % [y0, log[-1].pos.y])
+	# 墙上按 S：往下走
+	log = await _drive(Vector2(2058, -150), [{"frames": 10, "move": R}, {"frames": 30, "move": Vector2(0, 1)}])
+	_check(log[-1].pos.y > log[10].pos.y + 20.0, "墙上按 S 往下走")
 
 
 ## 竖井：只靠一面墙（右墙），按住朝墙方向连按跳，一路爬上顶上平台
@@ -217,7 +233,7 @@ func _shaft() -> void:
 	# 贴墙下滑：空中按住朝墙的方向
 	log = await _drive(Vector2(2058, -200), [{"frames": 50, "move": R}])
 	var sliding := log.filter(func(e): return e.state == WALL)
-	_check(sliding.size() > 20 and sliding[-1].vel.y <= T.wall_slide_speed + 1.0, "贴墙下滑限速（%d 帧，%.0f）" % [sliding.size(), sliding[-1].vel.y if sliding.size() > 0 else -1.0])
+	_check(sliding.size() > 20 and sliding[-1].vel.y <= T.wall_slide_speed + 1.0, "按住朝墙就在墙上走（%d 帧，速度 %.0f）" % [sliding.size(), sliding[-1].vel.y if sliding.size() > 0 else -1.0])
 	# 不按方向按跳：大力蹬开墙面
 	log = await _drive(Vector2(2058, -200), [{"frames": 20, "move": R}, {"frames": 1, "press": ["jump"], "hold": ["jump"]}, {"frames": 30, "hold": ["jump"]}])
 	_check(log[-1].pos.x < 2025.0, "不按方向蹬墙会被大力弹开（x=%.0f）" % log[-1].pos.x)

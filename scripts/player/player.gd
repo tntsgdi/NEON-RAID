@@ -76,6 +76,8 @@ var _sprint_held := 0.0
 ## 进入冲刺前的水平速度：冲刺结束后至少保留这么快，不会把疾驰砍掉
 var _pre_dash_speed := 0.0
 var _streak_timer := 0.0
+## 墙面行走时头朝上（往上走）还是朝下
+var _wall_up := true
 
 # 挥刀层
 var slash_step := -1
@@ -228,19 +230,28 @@ func _air(delta: float, T: Dictionary) -> void:
 	if input.dash_pressed and _air_dashes > 0 and _dash_cd <= 0.0:
 		_start_dash(T)
 		return
-	if _wall_dir != 0 and velocity.y > 0.0 and _dir_x() == _wall_dir and _wall_lock <= 0.0:
+	if _wall_dir != 0 and _wall_lock <= 0.0 and (_dir_x() == _wall_dir or (input.move.y < -0.3 and _dir_x() != -_wall_dir)):
 		_set_state(State.WALL)
 		_air_dashes = int(T.air_dashes)
 		_air_hang_used = false
 	_gravity(delta, T.max_fall, T)
 
 
+## 墙面行走（如履平地）：按住朝墙方向或 W 沿墙走上去，S 往下，不按就扒住不滑；
+## 按住 Shift 墙上跑；空格蹬墙跳；按离墙方向离开；走到墙顶自动翻上去。
 func _wall(delta: float, T: Dictionary) -> void:
 	_wall_dir = touching_wall()
 	if _wall_dir != 0:
 		_wall_coyote = 0.1
 		_last_wall = _wall_dir
-	if _wall_dir == 0 or _dir_x() != _wall_dir:
+	else:
+		# 墙走到头了：往上走的时候翻上墙顶，否则松开
+		if velocity.y < 0.0 and _mantle():
+			return
+		_set_state(State.AIR)
+		_gravity(delta, T.max_fall, T)
+		return
+	if _dir_x() == -_wall_dir:
 		_set_state(State.AIR)
 		_gravity(delta, T.max_fall, T)
 		return
@@ -250,13 +261,31 @@ func _wall(delta: float, T: Dictionary) -> void:
 	if input.dash_pressed and _dash_cd <= 0.0:
 		_start_dash(T)
 		return
+	var up := input.move.y < -0.3 or (_dir_x() == _wall_dir and input.move.y <= 0.3)
+	var down := input.move.y > 0.3
+	var spd: float = T.run_speed * 0.85 if input.run_held else T.walk_speed
+	var want := -spd if up else (spd if down else 0.0)
+	if up and velocity.y < want:
+		velocity.y = move_toward(velocity.y, want, T.overspeed_decay * delta)  # 带着冲劲撞上来：保留多出来的速度
+	else:
+		velocity.y = move_toward(velocity.y, want, (T.run_speed / T.run_accel_time) * delta)
 	velocity.x = _wall_dir * 30.0
-	_gravity(delta, T.wall_slide_speed, T)
-	# 贴墙时手上擦出火星，一眼看出"正扒在墙上"
-	_skid_dust -= delta
-	if _skid_dust <= 0.0 and velocity.y > 20.0:
-		_skid_dust = 0.05
-		Fx.dust(fx_parent, global_position + Vector2(_wall_dir * 6, -24), float(-_wall_dir), 2)
+	if down and is_on_floor():
+		_set_state(State.GROUND)
+
+
+## 走到墙顶：把机体推上墙沿（往上找 0–28 像素有没有空位）
+func _mantle() -> bool:
+	for up in [0, 4, 8, 12, 16, 20, 24, 28]:
+		if test_move(global_transform, Vector2(0, -up)):
+			return false
+		if not test_move(global_transform.translated(Vector2(0, -up)), Vector2(_last_wall * 8, 0)):
+			global_position += Vector2(_last_wall * 8, -up)
+			velocity = Vector2(_last_wall * 150.0, -80.0)
+			_set_state(State.AIR)
+			rig.ground_shift(-up)
+			return true
+	return false
 
 
 func _dash(delta: float, T: Dictionary) -> void:
@@ -339,12 +368,20 @@ func _step_up(vx_before: float) -> void:
 		return
 	for up in [4, 8, 12, 16, 20, 24, 28, 32, 36]:
 		if test_move(global_transform, Vector2(0, -up)):
-			return
+			break
 		if not test_move(global_transform.translated(Vector2(0, -up)), Vector2(dir * 3, 0)):
 			global_position += Vector2(dir * 3, -up)
 			velocity.x = vx_before
 			rig.ground_shift(-up)
 			return
+	# 迈不上去的高墙：直接走上墙面，水平速度转成向上的速度
+	if not test_move(global_transform, Vector2(0, -4)):
+		var T: Dictionary = Tuning.v
+		var spd: float = T.run_speed * 0.85 if input.run_held else T.walk_speed
+		velocity = Vector2(dir * 30.0, -maxf(spd, absf(vx_before) * 0.85))
+		_wall_dir = dir
+		_last_wall = dir
+		_set_state(State.WALL)
 
 
 ## 墙顶自动翻上：贴墙往上冲、头已经高过墙沿时，把机体推上去
@@ -630,8 +667,8 @@ func _do_hit(T: Dictionary) -> void:
 			_set_state(State.AIR)
 		impact.emit(6.0 if heavy else 3.5, _slash_aim)
 		overclock_charge = 0.0
-		_slash_freeze = 0.08
-		var stop: float = T.hit_stop * (1.7 if heavy else 1.0)
+		# 不再单独让刀身定格：命中停顿已经给了停顿感，两者叠加会变成"卡一下"
+		var stop: float = T.hit_stop * (1.5 if heavy else 1.0)
 		if stop > 0.0:
 			TimeFx.hitstop(stop)
 
@@ -832,7 +869,6 @@ func _skidding() -> bool:
 
 func _update_facing() -> void:
 	if state == State.WALL:
-		facing = -_wall_dir
 		return
 	# 挥刀期间锁朝向：刀不会挥到一半转身
 	if state == State.DASH or state == State.SLIDE or _wall_lock > 0.0 or _skidding() or slash_step >= 0:
@@ -845,17 +881,35 @@ func _update_facing() -> void:
 func _animate(delta: float, T: Dictionary) -> void:
 	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
 	var t: float = rig.turn
-	rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.3) * _squash.x, _squash.y)
+	var on_wall := state == State.WALL
 	var ratio: float = absf(velocity.x) / T.run_speed
+	if on_wall:
+		# 墙面行走：机体转 90°，脚踩在墙上；往上走头朝上，往下走头朝下
+		if absf(velocity.y) > 5.0:
+			_wall_up = velocity.y < 0.0
+		rig.rotation = lerp_angle(rig.rotation, -PI * 0.5 if _wall_up else PI * 0.5, 1.0 - exp(-20.0 * delta))
+		rig.scale = Vector2(_squash.x, _wall_dir * (1.0 if _wall_up else -1.0) * _squash.y)
+		rig.position = rig.position.lerp(Vector2(_wall_dir * 6.0, -18.0), 1.0 - exp(-20.0 * delta))
+		ratio = absf(velocity.y) / T.run_speed
+	else:
+		rig.rotation = lerp_angle(rig.rotation, 0.0, 1.0 - exp(-20.0 * delta))
+		rig.position = rig.position.lerp(Vector2.ZERO, 1.0 - exp(-20.0 * delta))
+		rig.scale = Vector2((signf(t) if t != 0.0 else float(facing)) * maxf(absf(t), 0.3) * _squash.x, _squash.y)
 	var mode := "idle"
 	if parked and state == State.GROUND:
 		mode = "kneel"
 	else:
 		mode = _mode_for_state(ratio, delta)
+	# 骨架里的"前方"在墙上是沿墙方向：速度和瞄准都换到骨架自己的坐标里
+	var rig_vel := velocity
+	var rig_aim := Vector2(aim.x * facing, aim.y)
+	if on_wall:
+		rig_vel = Vector2(absf(velocity.y), 0.0)
+		rig_aim = Transform2D(rig.rotation, rig.scale, 0.0, Vector2.ZERO).affine_inverse().basis_xform(aim).normalized()
 	rig.update({
 		"state": mode,
-		"facing": facing,
-		"vel": velocity,
+		"facing": 1 if on_wall else facing,
+		"vel": rig_vel,
 		"accel_x": (velocity.x - _prev_vx) / maxf(delta, 0.0001),
 		"speed_ratio": ratio,
 		"run_phase": _run_phase,
@@ -864,7 +918,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 		"slash_step": slash_step,
 		"slash_t": clampf(_slash_time / slash_duration(), 0.0, 1.0) if slash_step >= 0 else 0.0,
 		"slash_dir": rad_to_deg(Vector2(_slash_aim.x * facing, _slash_aim.y).angle()),
-		"aim_local": Vector2(aim.x * facing, aim.y),
+		"aim_local": rig_aim,
 		"sprint": sprinting,
 		"glow": (1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0) - (0.8 if parked else 0.0),
 	}, delta)
@@ -894,7 +948,10 @@ func _mode_for_state(ratio: float, delta: float) -> String:
 		State.SLIDE:
 			mode = "slide"
 		State.WALL:
-			mode = "wall"
+			mode = "idle"
+			if absf(velocity.y) > 5.0:
+				mode = "run"
+				_run_phase = fmod(_run_phase + absf(velocity.y) * delta / StriderRig.stride_px(absf(velocity.y)), 1.0)
 	return mode
 
 
@@ -902,6 +959,12 @@ func _after_animate(delta: float, T: Dictionary) -> void:
 	if slash_step >= 0:
 		var pts := rig.blade_points()
 		trail.add(pts[0], pts[1])
+	# 墙上走：脚下擦出火星
+	if state == State.WALL and absf(velocity.y) > 60.0:
+		_skid_dust -= delta
+		if _skid_dust <= 0.0:
+			_skid_dust = 0.08
+			Fx.dust(fx_parent, global_position + Vector2(_wall_dir * 6, -10), float(-_wall_dir), 1)
 	# 受伤后无敌期间闪烁
 	rig.visible = _iframes <= 0.0 or int(_iframes * 20.0) % 2 == 0
 	# 高速时身边掠过速度线；疾驰时更密更长

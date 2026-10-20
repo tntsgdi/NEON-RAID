@@ -20,7 +20,7 @@ const STRINGS := {
 	"TIP_WISP": ["机体被毁！1.5 秒内飞向附近的机体按 E（或直接碰到它）", "Shell destroyed! Fly to a nearby shell and press E within 1.5s (or touch it)"],
 	"POS_LABEL": ["夺壳训练场 · 夺取崖边的失控侦察机飞过深渊", "POSSESSION RANGE · Take a wild drone across the chasm"],
 	"POS_LABEL_FAR": ["夺壳训练场 · 对岸的敌人都能夺", "POSSESSION RANGE · Every enemy here can be taken"],
-	"TIP_WALL": ["贴住墙、按住朝墙的方向，连按空格就能沿墙往上爬", "Against a wall, hold toward it and tap SPACE to climb"],
+	"TIP_WALL": ["墙面如履平地：按住朝墙的方向（或 W）直接沿墙走上去，S 往下，空格蹬墙跳，到顶自动翻上", "Walls are floors: hold toward the wall (or W) to walk up, S down, SPACE wall-jumps, ledges auto-mantle"],
 	"TIP_ARENA": ["敌人开火前会拉出红色瞄准线：看准时机冲刺（L）穿过子弹，或者挥刀（J）把子弹砍回去", "Red aim lines warn of shots: dash (L) through the bullet, or slash (J) it back"],
 	"TIP_RUSHER": ["冲锋机压低身体就要冲过来：冲刺（L）穿过它，或者正面一刀（J）招架", "A crouching rusher is about to charge: dash through, or slash it head-on to parry"],
 	"TIP_SHIELD": ["盾兵正面挡子弹：绕到背后，或者跳起来下劈（空中按住 S + J）", "Shields block shots from the front: get behind, or down-slash from above (S + J in the air)"],
