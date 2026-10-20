@@ -14,6 +14,8 @@ var slide_pressed := false
 var slide_held := false
 var slash_pressed := false
 var shoot_pressed := false
+## 射击键按住（枪手异体的电磁长矛要蓄力）
+var shoot_held := false
 ## 按住跑步键（不按是走路）
 var run_held := true
 var possess_pressed := false

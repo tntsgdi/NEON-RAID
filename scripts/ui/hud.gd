@@ -49,6 +49,8 @@ var _toast_t := 0.0
 var _term: Label
 var _term_t := 0.0
 var _t := 0.0
+## 意识负荷（0..1，只在敌人壳里显示）
+var load_k := 0.0
 ## 夺壳冷却剩余比例（1 = 刚夺完）；冷却结束那一刻"叮"一声
 var possess_k := 0.0:
 	set(v):
@@ -290,7 +292,7 @@ func _draw_module() -> void:
 		line = Color(1.4, 0.3, 0.35).lerp(C_LINE, 0.5 + 0.5 * sin(_t * 6.0))
 	var r := MOD
 	if _max_energy <= 0.0:
-		r.size.y = 32
+		r.size.y = 32 if load_k <= 0.0 else 40
 	_frame(r, 7.0, Color(line, 0.55), C_FILL)
 	# 机体名前的状态灯：颜色和机体核心灯一致
 	var core := StriderRig.core_color(_hp_k, _t) if _max_hp > 0 else Color(1.6, 1.8, 1.9) * (0.6 + 0.4 * sin(_t * 9.0))
@@ -360,6 +362,15 @@ func _draw_module() -> void:
 				var gx := bar.position.x + bar.size.x * g / 0.3
 				draw_rect(Rect2(Vector2(gx - 3, bar.position.y), Vector2(6, bar.size.y)), Color(1.8, 2.0, 2.0, 0.6))
 		draw_string(font, bar.end + Vector2(4, 3), "EN", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, C_DIM)
+	# 意识负荷条：附身敌人壳时代替能量条，越满越红，快满时闪
+	if load_k > 0.0:
+		var lb := Rect2(r.position + Vector2(9, r.size.y - 9), Vector2(120, 3))
+		draw_rect(lb, Color(0.06, 0.1, 0.14, 0.9))
+		var lc := Color(0.4, 1.1, 1.3).lerp(Color(1.8, 0.4, 0.35), clampf((load_k - 0.4) / 0.5, 0.0, 1.0))
+		if load_k > 0.85 and fmod(_t * 8.0, 1.0) < 0.5:
+			lc = Color(2.2, 2.2, 2.2)
+		draw_rect(Rect2(lb.position, Vector2(lb.size.x * load_k, lb.size.y)), lc)
+		draw_string(font, lb.end + Vector2(4, 3), tr("HUD_LOAD"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7, lc if load_k > 0.75 else C_DIM)
 
 
 func _draw_section() -> void:

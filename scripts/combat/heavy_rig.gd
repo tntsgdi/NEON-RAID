@@ -20,6 +20,8 @@ var look := "hostile"
 var flash := false
 var wake := 0.0
 var parts_local := {}
+## 附身异体：被夺后长出一对鸟腿（反关节 + 晶体爪），0..1 生长进度
+var mut_k := 0.0
 var turn := 1.0
 var _turn_lin := 1.0
 
@@ -40,6 +42,11 @@ var _last_mode := ""
 var _shapes: Array = []
 ## 刚踩下一步（HeavyBot 用来扬尘、震屏）
 var footfall := false
+
+
+## 鸟腿起跳：髋部猛地往上一窜
+func jump_kick() -> void:
+	_pelvis_v -= 160.0
 
 
 func hit(dir_x: float, power: float) -> void:
@@ -178,8 +185,11 @@ func update(m: Dictionary, delta: float) -> void:
 	if wake > 0.0:
 		mod = Color(0.5, 0.55, 0.6).lerp(Color.WHITE, pow(1.0 - wake / 0.4, 2.0))
 	_shapes.clear()
+	var bird := look == "controlled"
+	if bird:
+		mut_k = minf(mut_k + delta / 0.3, 1.0)
 	# 后腿
-	_leg(pelvis - side * 7.0, _feet[1], "_b" + sfx, mod)
+	_leg(pelvis - side * 7.0, _feet[1], "_b" + sfx, mod, bird)
 	# 重锤臂（在身后）
 	var shoulder := top - up * 7.0 - side * 9.0
 	var hdir := Vector2.from_angle(deg_to_rad(_hammer))
@@ -195,7 +205,7 @@ func update(m: Dictionary, delta: float) -> void:
 	var plate_c := pelvis + up * 17.0 + side * 20.0
 	_part("plate" + wsfx, plate_c, rot, mod)
 	# 前腿
-	_leg(pelvis + side * 7.0, _feet[0], sfx, mod)
+	_leg(pelvis + side * 7.0, _feet[0], sfx, mod, bird)
 
 	var body_r := Rect2(pelvis - side * 10.0, Vector2.ZERO).expand(pelvis + side * 10.0).expand(top + side * 19.0).expand(top - side * 19.0)
 	var fx0 := minf(_feet[0].x, _feet[1].x) - 6.0
@@ -217,7 +227,12 @@ func hammer_point() -> Vector2:
 	return shoulder + Vector2.from_angle(deg_to_rad(_hammer)) * 28.0
 
 
-func _leg(hip: Vector2, foot: Vector2, sfx: String, mod: Color) -> void:
+func _leg(hip: Vector2, foot: Vector2, sfx: String, mod: Color, bird := false) -> void:
+	# 鸟腿：在脚掌上方再长出一节反关节（踝抬高、往后），脚换成晶体三趾爪
+	var toe := foot
+	if bird:
+		var e := 1.0 - pow(1.0 - mut_k, 3.0)
+		foot = toe + Vector2(-7.0, -15.0) * e
 	var d := hip.distance_to(foot)
 	var reach := THIGH + SHIN - 0.5
 	if d > reach:
@@ -230,7 +245,12 @@ func _leg(hip: Vector2, foot: Vector2, sfx: String, mod: Color) -> void:
 	var knee := hip + dir * along - Vector2(-dir.y, dir.x) * h
 	_part("thigh" + sfx, hip, (knee - hip).angle(), mod)
 	_part("shin" + sfx, knee, (foot - knee).angle(), mod)
-	_part("foot" + sfx, foot, 0.0, mod)
+	if bird and mut_k > 0.0:
+		_shapes.append(["part", "res://assets/sprites/r0/meta" + ("_b" if sfx.begins_with("_b") else ""), foot, (toe - foot).angle(), mod])
+		_shapes.append(["part", "res://assets/sprites/r0/foot" + ("_b" if sfx.begins_with("_b") else ""), toe, 0.0, mod])
+		_shapes.append(["part", "res://assets/sprites/mut/shard", knee + Vector2(2, -2), 0.0, Color.WHITE])
+	else:
+		_part("foot" + sfx, foot, 0.0, mod)
 	_part("knee" + sfx, knee, 0.0, mod)
 
 

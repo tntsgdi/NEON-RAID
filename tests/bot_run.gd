@@ -60,7 +60,7 @@ func _run() -> void:
 				sample += 1.0 / 120.0
 				if sample >= 2.0:
 					sample = 0.0
-					print("  t=%5.1f %-14s x=%6.0f y=%5.0f enemies=%d move=%s hunt=%s" % [t, body.get_script().resource_path.get_file(), body.global_position.x, body.global_position.y, region.enemies_left(), str(bot.move), str(bot._hunt)])
+					print("  t=%5.1f %-14s x=%6.0f y=%5.0f enemies=%d move=%s hunt=%s %s" % [t, body.get_script().resource_path.get_file(), body.global_position.x, body.global_position.y, region.enemies_left(), str(bot.move), str(bot._hunt), ("st=%d slamcd=%.2f air=%s floor=%s" % [body.state, body._slam_cd, str(body._slam_air), str(body.is_on_floor())]) if "_slam_cd" in body else ""])
 		var time: float = main.run_time if cleared else t
 		var ok: bool = cleared
 		var in_target := time >= TARGET.x and time <= TARGET.y

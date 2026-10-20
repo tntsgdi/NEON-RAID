@@ -41,6 +41,17 @@ var _ram_hit := {}
 var _dash_t := 0.0
 var _dead := false
 var hurtboxes: Hurtboxes
+## ---- 附身强化：两条意识线缆
+## 抓住的敌人、抓住的剩余时间
+var grab: Node2D
+var _grab_t := 0.0
+## 甩出去的敌人（飞行中撞到别的敌人，两个都吃伤害）
+var _flung: Node2D
+var _fling_t := 0.0
+var _fling_hit := {}
+## 异体生长进度 0..1
+var mut_k := 0.0
+const GRAB_RANGE := 170.0
 ## 瞄准（锁定框收紧）时长
 const AIM_TIME := 0.8
 
@@ -206,6 +217,9 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	velocity = vel
 	hp = MAX_HP
 	_iframes = 0.25
+	mut_k = 0.0
+	Fx.sparks(fx_parent, global_position, Vector2.UP, 12, Color(1.0, 2.2, 2.4))
+	Audio.play("charge", -6.0, 1.8)
 	remove_from_group("enemy")
 	remove_from_group("hittable")
 	remove_from_group("possessable")
@@ -268,12 +282,16 @@ func _controlled_physics(delta: float) -> void:
 		Fx.sparks(fx_parent, gun_pos(), aim, 4, Neon.CYAN_HOT)
 		Audio.play("shot", -6.0, 1.3)
 		_weapon_cd = 0.12
-	if input.slash_pressed and _ram_t <= 0.0:
-		var d := input.move.normalized() if input.move.length() > 0.2 else Vector2(facing, 0)
-		velocity = d * 520.0
-		_ram_t = 0.18
-		_ram_hit.clear()
-		Audio.play("dash", -6.0, 1.2)
+	mut_k = minf(mut_k + delta / 0.3, 1.0)
+	# J：意识线缆——抓住附近的敌人拽过来；抓着的时候再按 J（或 0.6 秒后）甩出去
+	if input.slash_pressed:
+		if is_instance_valid(grab):
+			_fling()
+		else:
+			_try_grab(aim)
+	if is_instance_valid(grab):
+		_hold_grab(delta)
+	_update_fling(delta)
 	if input.dash_pressed and _dash_t <= 0.0:
 		var d := input.move.normalized() if input.move.length() > 0.2 else Vector2(facing, 0)
 		velocity = d * 600.0
@@ -281,6 +299,91 @@ func _controlled_physics(delta: float) -> void:
 		Audio.play("dash", -6.0, 1.4)
 	_aim = aim
 	move_and_slide()
+
+
+func _try_grab(aim: Vector2) -> void:
+	var best: Node2D = null
+	var bd := GRAB_RANGE
+	for n in get_tree().get_nodes_in_group("hittable"):
+		if n == self or (n.has_method("alive") and not n.alive()):
+			continue
+		# 重装机太重：只有瘫痪时才拽得动
+		if n is HeavyBot and n.state != HeavyBot.State.STUNNED:
+			continue
+		var to: Vector2 = n.hurt_rect().get_center() - global_position
+		if to.length() < bd and (aim.length() < 0.1 or absf(aim.angle_to(to)) < deg_to_rad(70.0)):
+			bd = to.length()
+			best = n
+	if best == null:
+		Audio.play("swing_1", -8.0, 1.6)
+		return
+	grab = best
+	_grab_t = 0.6
+	if grab is EnemyBot:
+		grab.state = EnemyBot.State.STAGGER
+		grab._t = 1.0
+	Audio.play("possess", -8.0, 1.6)
+	Fx.sparks(fx_parent, grab.hurt_rect().get_center(), (global_position - grab.global_position).normalized(), 8, Color(1.0, 2.2, 2.4))
+
+
+## 抓着：把敌人拽到身前下方，跟着侦察机走
+func _hold_grab(delta: float) -> void:
+	if grab.has_method("alive") and not grab.alive():
+		grab = null
+		return
+	_grab_t -= delta
+	var want := global_position + Vector2(facing * 14.0, 22.0)
+	grab.global_position = grab.global_position.lerp(want, 1.0 - exp(-14.0 * delta))
+	if "velocity" in grab:
+		grab.velocity = Vector2.ZERO
+	if grab is EnemyBot:
+		grab._t = maxf(grab._t, 0.3)
+	if _grab_t <= 0.0:
+		_fling()
+
+
+## 甩出去：朝移动方向（没按方向就朝面朝方向）高速甩飞，自己先吃 1 点
+func _fling() -> void:
+	var d := input.move.normalized() if input.move.length() > 0.2 else Vector2(facing, 0.15).normalized()
+	var n := grab
+	grab = null
+	if not is_instance_valid(n):
+		return
+	n.take_hit(d, 1, "slash")
+	if is_instance_valid(n) and "velocity" in n:
+		n.velocity = d * 640.0 + Vector2(0, -60)
+		if n is EnemyBot and n.alive():
+			n.state = EnemyBot.State.AIR
+	_flung = n
+	_fling_t = 0.7
+	_fling_hit.clear()
+	Audio.play("dash", -4.0, 0.9)
+	get_tree().call_group("game", "impact", 3.0, d)
+
+
+func _update_fling(delta: float) -> void:
+	if not is_instance_valid(_flung):
+		return
+	_fling_t -= delta
+	if _fling_t <= 0.0:
+		_flung = null
+		return
+	var r: Rect2 = _flung.hurt_rect()
+	for n in get_tree().get_nodes_in_group("hittable"):
+		if n == _flung or n == self or _fling_hit.has(n) or (n.has_method("alive") and not n.alive()):
+			continue
+		if r.grow(2.0).intersects(n.hurt_rect()):
+			_fling_hit[n] = true
+			var d: Vector2 = (n.hurt_rect().get_center() - r.get_center()).normalized()
+			n.take_hit(d, 2, "slash")
+			if is_instance_valid(_flung) and _flung.has_method("take_hit"):
+				_flung.take_hit(-d, 2, "slash")
+			Fx.sparks(fx_parent, n.hurt_rect().get_center(), d, 14, Neon.WHITE_HOT)
+			Audio.play("hit_heavy", -2.0, 0.9)
+			get_tree().call_group("game", "shockwave", n.hurt_rect().get_center())
+			TimeFx.hitstop(0.05)
+			if not is_instance_valid(_flung):
+				return
 
 
 func _controlled_aim() -> Vector2:
@@ -326,6 +429,22 @@ func _draw() -> void:
 		PixelPart.get_part(dir + "rotor%d" % frame).draw(self, Transform2D.IDENTITY, bob + Vector2(x, -6).rotated(tilt * float(facing)), 0.0, flip, mod)
 	PixelPart.get_part(dir + "hull" + sfx).draw(self, Transform2D.IDENTITY, bob, tilt, flip, mod)
 	PixelPart.get_part(dir + "pod" + sfx).draw(self, Transform2D.IDENTITY, bob + Vector2(0, 5).rotated(tilt * float(facing)), tilt, flip, mod)
+	# 异体：两条意识线缆（被夺时长出来；平时垂着轻轻摆，抓人时绷直连到敌人身上）
+	if controlled and mut_k > 0.0:
+		for side in [-1.0, 1.0]:
+			var root := bob + Vector2(side * 6.0, 4.0)
+			var tip: Vector2
+			if is_instance_valid(grab):
+				tip = grab.hurt_rect().get_center() - global_position + Vector2(side * 3.0, 0)
+			else:
+				tip = root + Vector2(side * 4.0 + sin(_phase * 4.0 + side) * 2.0, 10.0 * mut_k)
+			var n := 8
+			for i in n:
+				var t := float(i) / n
+				var p0 := root.lerp(tip, t) + Vector2(0, sin(t * PI) * (3.0 if not is_instance_valid(grab) else 0.0))
+				var p1 := root.lerp(tip, float(i + 1) / n) + Vector2(0, sin(float(i + 1) / n * PI) * (3.0 if not is_instance_valid(grab) else 0.0))
+				PixelFx.line(self, p0, p1, PixelFx.CYAN[2] if i % 2 == 0 else PixelFx.CYAN[1], 1)
+			PixelPart.get_part("res://assets/sprites/mut/claw").draw(self, Transform2D.IDENTITY, tip, (tip - root).angle(), false)
 	if not controlled and _mode == "aim":
 		var k := 1.0 - _t / AIM_TIME
 		draw_line(gun_pos() - global_position, gun_pos() - global_position + _aim * 260.0, Color(1.2, 0.2, 0.25, 0.1 + 0.25 * k), 1.0)

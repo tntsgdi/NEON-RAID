@@ -25,6 +25,7 @@ func poll(body: Node2D) -> void:
 	slide_held = Input.is_action_pressed("slide")
 	slash_pressed = Input.is_action_just_pressed("slash")
 	shoot_pressed = Input.is_action_just_pressed("shoot")
+	shoot_held = Input.is_action_pressed("shoot")
 	possess_pressed = Input.is_action_just_pressed("possess")
 	# Shift：按住超过 0.15 秒算跑，轻点算冲刺（松手时触发）
 	dash_pressed = Input.is_action_just_pressed("dash")

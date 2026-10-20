@@ -6,12 +6,17 @@ extends CharacterBody2D
 signal expired
 
 const LIFE := 1.5
+## 过载弹出的光球：2.5 秒找壳，超时自动飞回本体
+const BURNOUT_LIFE := 2.5
 const SPEED := 420.0
 
 var input: PlayerInput
 var lock_target: Node2D
 var life := LIFE
 var facing := 1
+## 过载弹出时设为本体：超时后自动飞回它（不回检查点）
+var home: Node2D
+var _homing := false
 var _trail: Array = []
 
 
@@ -64,8 +69,25 @@ func release_control() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _homing:
+		# 飞回本体：不受输入控制，穿墙直飞，碰到本体就回去
+		if not is_instance_valid(home):
+			expired.emit()
+			queue_free()
+			return
+		var to: Vector2 = home.center() - global_position
+		velocity = to.normalized() * minf(SPEED * 2.2, to.length() / maxf(delta, 0.001))
+		global_position += velocity * delta
+		if to.length() < 14.0:
+			get_tree().call_group("consciousness", "return_home", self)
+		_trail_step()
+		return
 	life -= delta  # 按游戏时间算（慢动作里也慢）
 	if life <= 0.0:
+		if is_instance_valid(home):
+			_homing = true
+			Audio.play("possess", -8.0, 0.7)
+			return
 		remove_from_group("controlled")
 		expired.emit()
 		queue_free()
@@ -76,6 +98,10 @@ func _physics_process(delta: float) -> void:
 	if absf(velocity.x) > 10.0:
 		facing = 1 if velocity.x > 0.0 else -1
 	move_and_slide()
+	_trail_step()
+
+
+func _trail_step() -> void:
 	_trail.append(global_position)
 	if _trail.size() > 10:
 		_trail.pop_front()
@@ -83,7 +109,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var k := clampf(life / LIFE, 0.0, 1.0)
+	var k := clampf(life / (BURNOUT_LIFE if home != null else LIFE), 0.0, 1.0)
 	for i in range(1, _trail.size()):
 		var a: Vector2 = _trail[i - 1] - global_position
 		var b: Vector2 = _trail[i] - global_position

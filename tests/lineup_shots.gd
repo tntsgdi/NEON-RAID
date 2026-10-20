@@ -37,6 +37,7 @@ func _run() -> void:
 	var EB = load("res://scripts/combat/enemy_bot.gd")
 	var DB = load("res://scripts/combat/drone_bot.gd")
 	var HB = load("res://scripts/combat/heavy_bot.gd")
+	var mut := OS.get_cmdline_user_args().has("--mut")
 	for spec in [["gunner", false], ["burst", false], ["rusher", false], ["gunner", true]]:
 		x += 46.0
 		var e = EB.new()
@@ -48,7 +49,11 @@ func _run() -> void:
 		e.fx_parent = arena
 		arena.add_child(e)
 		units.append(e)
-	for mode in ["hostile", "wild", "controlled"]:
+		if mut:
+			e.input = load("res://scripts/player/player_input.gd").new()
+			e.controlled = true
+			e.facing = 1
+	for mode in (["controlled"] if mut else ["hostile", "wild", "controlled"]):
 		x += 34.0
 		var d = DB.new()
 		d.wild = mode == "wild"
@@ -59,7 +64,7 @@ func _run() -> void:
 			d.input = load("res://scripts/player/player_input.gd").new()
 			d.controlled = true
 		units.append(d)
-	for mode in ["hostile", "stunned", "controlled"]:
+	for mode in (["controlled"] if mut else ["hostile", "stunned", "controlled"]):
 		x += 60.0
 		var h = HB.new()
 		h.hostile = true
@@ -100,8 +105,8 @@ func _run() -> void:
 	img.linear_to_srgb()
 	var k: int = img.get_width() / 640
 	var x3 := img.duplicate()
-	x3.save_png("res://screenshots/pixel_lineup_x3.png")
+	x3.save_png("res://screenshots/pixel_lineup%s_x3.png" % ("_mut" if mut else ""))
 	img.resize(640, 360, Image.INTERPOLATE_NEAREST)
-	img.save_png("res://screenshots/pixel_lineup.png")
+	img.save_png("res://screenshots/pixel_lineup%s.png" % ("_mut" if mut else ""))
 	print("lineup saved (scale %d)" % k)
 	quit(0)

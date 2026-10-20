@@ -176,6 +176,9 @@ func _die(dir: Vector2) -> void:
 func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	controlled = true
 	hostile = false
+	rig.mut_k = 0.0
+	Fx.sparks(fx_parent, center(), Vector2.UP, 18, Color(1.0, 2.2, 2.4))
+	Audio.play("charge", -6.0, 1.2)
 	input = inp
 	velocity = Vector2(vel.x * 0.5, vel.y)
 	hp = CONTROL_HP
@@ -246,7 +249,8 @@ func _physics_process(delta: float) -> void:
 		get_tree().call_group("game", "impact", 3.0, Vector2.DOWN)
 	if _slam_air and is_on_floor():
 		_slam_air = false
-		_slam_impact(100.0, 3)
+		# 附身强化：从天而降，范围和伤害翻倍
+		_slam_impact(200.0, 6)
 	_update_rig(delta)
 
 
@@ -341,7 +345,9 @@ func _controlled(delta: float) -> void:
 	if dir != 0:
 		facing = dir
 	if input.jump_pressed and is_on_floor():
-		velocity.y = -330.0  # 跳得很矮（约 34 像素）
+		# 附身强化：长出鸟腿，跳得很高（约 95 像素）；仍然不能墙面行走
+		velocity.y = -560.0
+		rig.jump_kick()
 		Fx.dust(fx_parent, global_position, 0.0, 5)
 	if input.slash_pressed and _ram_cd <= 0.0:
 		_ram_cd = RAM_CD
@@ -421,7 +427,7 @@ func _slam_impact(radius: float, power: int) -> void:
 		if b.kind != "floor":
 			continue
 		var r: Rect2 = b.global_rect()
-		if r.position.y >= global_position.y - 4.0 and r.position.y <= global_position.y + 30.0 and r.position.x - radius * 0.6 < global_position.x and r.end.x + radius * 0.6 > global_position.x:
+		if r.position.y >= global_position.y - 4.0 and r.position.y <= global_position.y + 30.0 and r.position.x - radius * 0.8 < global_position.x and r.end.x + radius * 0.8 > global_position.x:
 			b.smash(Vector2.DOWN)
 	if controlled:
 		for n in get_tree().get_nodes_in_group("hittable"):

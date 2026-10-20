@@ -49,6 +49,11 @@ var _head_v := 0.0
 var parts_local := {}
 ## 被夺后"醒来"：目镜由暗到亮（剩余时间）
 var wake := 0.0
+## 墙面行走时额外的整体旋转
+var extra_rot := 0.0
+## 异体生长进度（0..1）；电磁长矛蓄力（0..1）
+var mut_k := 0.0
+var charge_k := 0.0
 
 
 ## 被打：躯干向后弹，翻滚冲量（power 越大越猛）
@@ -123,7 +128,7 @@ func update(m: Dictionary, delta: float) -> void:
 	else:
 		_spin = lerp_angle(_spin, 0.0, 1.0 - exp(-14.0 * delta))
 		_spin_v = 0.0
-	rotation = _spin * _facing
+	rotation = _spin * _facing + extra_rot
 
 	# ---- 步态
 	var stride := 18.0 + speed * 0.07
@@ -205,7 +210,22 @@ func update(m: Dictionary, delta: float) -> void:
 	_part("arm_b" + sfx, shoulder + Vector2(-1, 0), (back_hand - shoulder).angle(), mod)
 	# 三连发：背后的弹鼓背包（先画，在躯干后面）
 	if kind == "burst":
-		_part("pack" + sfx, pelvis + up * 9.0 - side_v(rot) * 6.0, rot, mod)
+		var pack := pelvis + up * 9.0 - side_v(rot) * 6.0
+		# 异体：弹鼓里长出三条蜂群触须，往后上方卷着摆
+		if controlled and mut_k > 0.0:
+			var e := 1.0 - pow(1.0 - mut_k, 3.0)
+			for i in 3:
+				var base_a := deg_to_rad(-150.0 + i * 28.0) + rot
+				var prev := pack
+				var n := 6
+				for k in n:
+					var t := float(k + 1) / n
+					var a := base_a + sin(_time * 5.0 + i * 1.7 + t * 3.0) * 0.35 * t
+					var p := pack + Vector2.from_angle(a) * (14.0 * t * e) + Vector2(0, -t * t * 4.0 * e)
+					_shapes.append(["seg", prev, p, PixelFx.CYAN[2] if k < 4 else PixelFx.CYAN[3]])
+					prev = p
+				_mpart("tip", prev, base_a)
+		_part("pack" + sfx, pack, rot, mod)
 	# 躯干：竖着画的贴图，角度 = 倾斜；盾兵和冲锋机用更厚的重甲躯干
 	_part(("torso_h" if armored or kind == "rusher" else "torso") + sfx, pelvis, rot, mod)
 	var side := Vector2(1, 0).rotated(rot)
@@ -219,6 +239,10 @@ func update(m: Dictionary, delta: float) -> void:
 	}
 	# 头（轴心在脖子）
 	_part(("head_horn" if kind == "rusher" else "head") + sfx, neck, hrot, mod)
+	# 异体：冲锋机的撞角长成巨大的晶体冲角（从头盔里伸出来）
+	if kind == "rusher" and controlled and mut_k > 0.0:
+		var e := 1.0 - pow(1.0 - mut_k, 3.0)
+		_mpart("horn", neck + Vector2(0, -4).rotated(hrot) + Vector2(1.0 - 9.0 * (1.0 - e), 0).rotated(hrot), hrot)
 	# 前腿
 	_leg(pelvis + Vector2(1.5, 0), _feet[0], sfx, mod)
 	# 武器臂
@@ -235,6 +259,11 @@ func update(m: Dictionary, delta: float) -> void:
 		var hand := shoulder + dir * (UPPER_ARM + FOREARM - 2.0) - dir * _recoil * 3.0
 		_part("arm" + sfx, shoulder + Vector2(1, 0), (hand - shoulder).angle(), mod)
 		_part(("burst" if kind == "burst" else "rifle") + sfx, hand, dir.angle(), mod)
+		# 异体：枪手的枪臂裂开，长出电磁长矛；蓄力时越来越亮
+		if kind == "gunner" and controlled and mut_k > 0.0:
+			var e := 1.0 - pow(1.0 - mut_k, 3.0)
+			var glow := Color(1.0 + charge_k * 1.4, 1.0 + charge_k * 1.4, 1.0 + charge_k * 1.4)
+			_mpart("spear", hand + dir * (2.0 - 16.0 * (1.0 - e)), dir.angle(), glow)
 		var gun_end := hand + dir * 11.0
 		muzzle_world = to_global(gun_end)
 		if state == "aim":
@@ -263,6 +292,10 @@ func _leg(hip: Vector2, foot: Vector2, sfx: String, mod: Color) -> void:
 
 static func side_v(rot: float) -> Vector2:
 	return Vector2(1, 0).rotated(rot)
+
+
+func _mpart(name: String, pos: Vector2, angle: float, mod := Color.WHITE) -> void:
+	_shapes.append(["part", "res://assets/sprites/mut/" + name, pos, angle, mod])
 
 
 func _part(name: String, pos: Vector2, angle: float, mod: Color) -> void:

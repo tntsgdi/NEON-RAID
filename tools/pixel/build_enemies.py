@@ -334,10 +334,51 @@ def heavy():
     save(u, "hammer", hammer, (2, 4))
 
 
+# ---------------------------------------------------------------- 附身异体（R-0 意识异化出的青色晶体部件）
+
+MUT = {"0": "c0", "c": "c1", "C": "c2", "H": "c3", "W": "w0", "k": "k2"}
+
+
+def mutation():
+    out = os.path.join(ROOT, "mut")
+
+    def put(name, rows, pivot, lined=True):
+        pix.atlas(pix.grid(rows, MUT), pivot, N, name, out, lined=lined)
+    # 电磁长矛：从枪臂裂开长出的晶体长矛（沿 +x，轴心在根部）
+    put("spear", [
+        "..cc.......................",
+        ".cCCcccc...................",
+        "cCHHCCCCCCCCCCCCCCCCHHHWW..",
+        "cCHHHHHHHHHHHHHHHHHHHHWWWWW",
+        "cCHHCCCCCCCCCCCCCCCCHHHWW..",
+        ".cCCcccc...................",
+        "..cc.......................",
+    ], (1, 3))
+    # 冲角：冲锋机头上长出的巨大晶体冲角（沿 +x，轴心在根部）
+    put("horn", [
+        "cc..............",
+        "cCcc............",
+        "cCHCccc.........",
+        "cCHHHCCccc......",
+        "cCHHHHHHCCCcc...",
+        "cCHHHHHHHHHHHWW.",
+        "cCHHHHHHCCCCc...",
+        "cCHHCCcc........",
+        "cCcc............",
+    ], (0, 5))
+    # 晶体碎片：长在盾沿、重装机膝盖上（竖着，轴心在底部）
+    put("shard", ["..W..", ".HWH.", ".HHH.", "cHHHc", "cCHCc", "cCCCc", ".ccc.", "..c.."], (2, 7))
+    # 线缆的爪尖（沿 +x）
+    put("claw", ["..Hc", "CHW.", "..Hc"], (0, 1))
+    # 蜂群触须的尖端
+    put("tip", [".HW", "CHH", ".Cc"], (0, 1))
+
+
 def main():
     trooper()
     drone()
     heavy()
+    mutation()
     print("enemy parts ->", os.path.abspath(ROOT))
 
 

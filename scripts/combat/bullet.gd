@@ -15,6 +15,9 @@ var shooter: Node
 var deflected := false
 var life := 2.0
 var fx_parent: Node
+## 追踪：每帧把速度方向往目标转（三连发异体的蜂群弹）
+var homing: Node2D
+var turn_rate := 9.0
 var _light: PointLight2D
 
 
@@ -66,6 +69,9 @@ func _physics_process(delta: float) -> void:
 	if life <= 0.0:
 		queue_free()
 		return
+	if is_instance_valid(homing) and (not homing.has_method("alive") or homing.alive()):
+		var want: Vector2 = (homing.hurt_rect().get_center() - global_position).normalized()
+		velocity = velocity.rotated(clampf(velocity.angle_to(want), -turn_rate * delta, turn_rate * delta))
 	var from := global_position
 	var to := from + velocity * delta
 	var q := PhysicsRayQueryParameters2D.create(from, to, 1)

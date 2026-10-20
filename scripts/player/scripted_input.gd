@@ -38,6 +38,7 @@ func poll(body: Node2D) -> void:
 		move = Vector2.ZERO
 		jump_held = false
 		slide_held = false
+		shoot_held = false
 		return
 	var s: Dictionary = steps[_step]
 	move = s.get("move", Vector2.ZERO)
@@ -47,6 +48,7 @@ func poll(body: Node2D) -> void:
 	var hold: Array = s.get("hold", [])
 	jump_held = "jump" in hold
 	slide_held = "slide" in hold
+	shoot_held = "shoot" in hold
 	if _frame == 0:
 		var press: Array = s.get("press", [])
 		jump_pressed = "jump" in press
@@ -57,4 +59,5 @@ func poll(body: Node2D) -> void:
 		possess_pressed = "possess" in press
 		jump_held = jump_held or jump_pressed
 		slide_held = slide_held or slide_pressed
+		shoot_held = shoot_held or shoot_pressed
 	_frame += 1

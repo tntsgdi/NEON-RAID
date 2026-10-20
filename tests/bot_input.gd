@@ -329,12 +329,16 @@ func _heavy(body: Node2D, dir: int) -> void:
 			slash_pressed = true
 			_act_cd = 0.9
 			return
-	# 脚下有警示地板 → 砸地
-	for i in range(-1, 2):
-		if _char_ahead(body, dir, float(i), -0.5) == "F" and _solid(body, dir, float(i), -0.5):
-			move = Vector2.ZERO
+	# 警示地板：在脚下就砸；在身后就退回去站到它上面再砸
+	if _char_ahead(body, dir, 0.0, -0.5) == "F" and _solid(body, dir, 0.0, -0.5):
+		move = Vector2.ZERO
+		if body.is_on_floor():
 			shoot_pressed = true
 			_act_cd = 1.3
+		return
+	for i in range(1, 4):
+		if _char_ahead(body, -dir, float(i), -0.5) == "F" and _solid(body, -dir, float(i), -0.5):
+			move = Vector2(-dir, 0)
 			return
 	var e := _nearest_enemy(body, 90.0)
 	if e != null:

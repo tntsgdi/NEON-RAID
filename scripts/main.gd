@@ -605,6 +605,7 @@ func _process(delta: float) -> void:
 	hud.refresh(level.label(x), run_time, best, bvel.length(), finished,
 		"HUD_MODE_PIXEL" if pixel_mode else "HUD_MODE_HD", tuning_panel.visible)
 	hud.possess_k = 0.0 if body is Wisp else controller.cooldown / Consciousness.COOLDOWN
+	hud.load_k = controller.load_k
 	if body == player:
 		hud.set_shell(tr("SHELL_STRIDER"))
 		hud.refresh_combat(player.hp, Player.MAX_HP, player.energy, Tuning.v.gun_energy, player.overclock_charge > 0.0)

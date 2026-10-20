@@ -565,6 +565,11 @@ static func draw_shapes(ci: CanvasItem, shapes: Array) -> void:
 				var part := PixelPart.get_part(s[1])
 				var a: float = (s[3] - rho) if flip else (s[3] + rho)
 				part.draw(ci, inv, gx * s[2], a, flip, s[4])
+			"seg":
+				# 像素线段（异体触须等）：在世界像素格上画
+				ci.draw_set_transform_matrix(inv)
+				PixelFx.line(ci, gx * s[1], gx * s[2], s[3], 1)
+				ci.draw_set_transform_matrix(Transform2D.IDENTITY)
 			"px":
 				# 单个发光像素
 				var wp: Vector2 = (gx * s[1]).round()

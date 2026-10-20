@@ -23,6 +23,10 @@ var world: Node2D
 var reticle: Reticle
 ## 正在飞的意识光流（镜头跟着它）
 var flow: SoulFlow
+## 意识负荷：附身在敌人壳里越久越烫，满了壳过载自爆（0..1）
+var load_k := 0.0
+var _load := 0.0
+var _smoke_t := 0.0
 
 
 func setup(base_shell: Player, world_node: Node2D) -> void:
@@ -34,6 +38,7 @@ func setup(base_shell: Player, world_node: Node2D) -> void:
 	reticle.z_index = 9
 	world.add_child(reticle)
 	process_physics_priority = -10  # 先算锁定，再让机体用
+	add_to_group("consciousness")
 
 
 ## 回到基础机体并放到 pos（重来、回检查点、测试都用它）
@@ -45,14 +50,30 @@ func return_to_base(pos: Vector2) -> void:
 		base.take_control(input, Vector2.ZERO)
 	base.input = input
 	base.reset_at(pos)
+	_load = 0.0
+	load_k = 0.0
 	current = base
 	lock = null
 	cooldown = 0.0
 	shell_changed.emit(base)
 
 
+## 每种壳能撑多久（秒）：轻的久、重的短（附身强化定案）
+static func load_time(shell: Node) -> float:
+	if shell is HeavyBot:
+		return 10.0
+	if shell is DroneBot:
+		return 20.0
+	if shell is EnemyBot:
+		return 20.0 if shell.kind == "gunner" and not shell.shielded else 15.0
+	return 0.0
+
+
 func _physics_process(delta: float) -> void:
 	cooldown = maxf(cooldown - delta, 0.0)
+	if not is_instance_valid(current):
+		return
+	_update_load(delta)
 	if not is_instance_valid(current):
 		return
 	_update_lock()
@@ -187,7 +208,68 @@ func possess(target: Node2D) -> void:
 	current = target
 	lock = null
 	cooldown = COOLDOWN
+	_load = 0.0
+	load_k = 0.0
 	shell_changed.emit(target)
+
+
+## 负荷：只在敌人壳里涨；快满时冒烟，满了过载
+func _update_load(delta: float) -> void:
+	var cap := load_time(current)
+	if cap <= 0.0:
+		_load = 0.0
+		load_k = 0.0
+		return
+	_load += delta
+	load_k = clampf(_load / cap, 0.0, 1.0)
+	if load_k > 0.75:
+		_smoke_t -= delta
+		if _smoke_t <= 0.0:
+			_smoke_t = 0.12 if load_k < 0.9 else 0.06
+			Fx.dust(world, current.center() + Vector2(randf_range(-6, 6), -8), 0.0, 2)
+			if load_k > 0.9:
+				Fx.sparks(world, current.center(), Vector2.UP, 3, Color(2.6, 0.6, 0.5))
+	if load_k >= 1.0:
+		_overload()
+
+
+## 过载：壳当场自爆（炸伤周围的敌人），意识光流弹出——2.5 秒内碰到哪个壳就夺哪个，超时自动飞回本体
+func _overload() -> void:
+	var shell := current
+	var at: Vector2 = shell.center()
+	Fx.flash(world, at, Color(2.8, 2.9, 3.0), 26.0)
+	Fx.ring(world, at, 46.0)
+	Fx.sparks(world, at, Vector2.UP, 24, Color(1.0, 2.2, 2.4))
+	Fx.debris(world, at, Vector2.UP, 12, Color(0.3, 1.1, 1.25))
+	Audio.play("break", 0.0, 0.8)
+	get_tree().call_group("game", "shockwave", at)
+	get_tree().call_group("game", "impact", 7.0, Vector2.ZERO)
+	for n in get_tree().get_nodes_in_group("hittable"):
+		if n == shell or (n.has_method("alive") and not n.alive()):
+			continue
+		var c: Vector2 = n.hurt_rect().get_center()
+		if c.distance_to(at) < 72.0:
+			n.take_hit((c - at).normalized(), 2, "slam")
+	_detach(shell)
+	shell.release_control()
+	_load = 0.0
+	load_k = 0.0
+	var w := Wisp.new()
+	w.position = at
+	w.life = Wisp.BURNOUT_LIFE
+	w.home = base
+	world.add_child(w)
+	w.take_control(input, Vector2(0, -180))
+	current = w
+	lock = null
+	shell_changed.emit(w)
+
+
+## 光球超时：飞回本体后自动回到本体
+func return_home(w: Node2D) -> void:
+	if current != w:
+		return
+	possess(base)
 
 
 ## 意识主动离开一具机体时，先断开它的"被打坏"信号——它接下来的断电报废不算被打坏

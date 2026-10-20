@@ -165,7 +165,7 @@ def r003():
     # 下层：隧道（第 21–27 行，从地板下面开始）挖空，地面从第 28 行起
     b.fill(fx, 21, tunnel_end, 27, " ")
     b.fill(2, 28, tunnel_end + 80, 35)
-    b.fill(fx, 20, fx + 3, 20, "F")
+    b.fill(fx - 1, 20, fx + 3, 20, "F")
     # 隧道里：两台冲锋机 + 射手
     b.put(fx + 14, 27, "C"); b.put(fx + 26, 27, "r"); b.put(fx + 40, 27, "g"); b.put(fx + 52, 27, "r")
     # 机库大厅：精英重装机 + 射手 + 平台上的三连发
@@ -194,7 +194,7 @@ def r004():
     b.fill(b.x + 2, 0, tunnel_end, 21)
     b.fill(fx, 21, tunnel_end, 27, " ")
     b.fill(2, 28, tunnel_end + 30, 35)
-    b.fill(fx, 20, fx + 3, 20, "F")
+    b.fill(fx - 1, 20, fx + 3, 20, "F")
     # 隧道：钥匙安保机 + 敌对射手 → 安保门 → 冲锋机
     b.put(fx + 8, 27, "?"); b.put(fx + 16, 27, "k"); b.put(fx + 24, 27, "g")
     door = fx + 34
