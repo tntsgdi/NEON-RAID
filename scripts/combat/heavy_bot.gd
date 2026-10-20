@@ -178,7 +178,7 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	hostile = false
 	rig.mut_k = 0.0
 	Fx.sparks(fx_parent, center(), Vector2.UP, 18, Color(1.0, 2.2, 2.4))
-	Audio.play("charge", -6.0, 1.2)
+	Audio.play("mut_grow", -2.0, 0.8)
 	input = inp
 	velocity = Vector2(vel.x * 0.5, vel.y)
 	hp = CONTROL_HP
@@ -345,8 +345,8 @@ func _controlled(delta: float) -> void:
 	if dir != 0:
 		facing = dir
 	if input.jump_pressed and is_on_floor():
-		# 附身强化：长出鸟腿，跳得很高（约 95 像素）；仍然不能墙面行走
-		velocity.y = -560.0
+		# 附身强化：长出鸟腿，跳得很高（约 140 像素）；仍然不能墙面行走
+		velocity.y = -680.0
 		rig.jump_kick()
 		Fx.dust(fx_parent, global_position, 0.0, 5)
 	if input.slash_pressed and _ram_cd <= 0.0:

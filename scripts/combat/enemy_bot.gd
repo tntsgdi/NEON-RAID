@@ -417,7 +417,7 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	_chain = 0
 	# 异体生长：一圈青色碎晶炸开
 	Fx.sparks(fx_parent, center(), Vector2.UP, 14, Color(1.0, 2.2, 2.4))
-	Audio.play("charge", -6.0, 1.6)
+	Audio.play("mut_grow", -2.0)
 	_flash = 0.0
 	state = State.PATROL
 	remove_from_group("enemy")
@@ -576,6 +576,7 @@ func _abilities(aim: Vector2, delta: float) -> void:
 			# 电磁长矛：按住蓄力，松开贯穿；轻点就是普通一枪
 			if input.shoot_pressed and _weapon_cd <= 0.0:
 				_rail_charge = 0.0
+				Audio.play("rail_charge", -6.0)
 			if _rail_charge >= 0.0:
 				if input.shoot_held:
 					var before := _rail_charge
@@ -624,8 +625,7 @@ func _rail(aim: Vector2, power: int) -> void:
 		if Bullet._segment_hits(from, to, n.hurt_rect().grow(3.0)):
 			n.take_hit(aim, power, "rail")
 	RailFx.spawn(fx_parent, from, to, power)
-	Audio.play("shot", 0.0, 0.55)
-	Audio.play("deflect", -6.0, 0.7)
+	Audio.play("rail_fire", 0.0)
 	get_tree().call_group("game", "impact", 3.0 + power, -aim)
 	TimeFx.hitstop(0.04)
 	rig.fire()
@@ -649,7 +649,7 @@ func _swarm(aim: Vector2) -> void:
 		if not targets.is_empty():
 			b.homing = targets[i % targets.size()]
 	Fx.sparks(fx_parent, gun_pos(), aim, 6, Neon.CYAN_HOT)
-	Audio.play("enemy_shot", -4.0, 1.5)
+	Audio.play("swarm", -2.0)
 	rig.fire()
 	_weapon_cd = 0.9
 	_gun_hot = 0.8

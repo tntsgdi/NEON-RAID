@@ -441,7 +441,11 @@ func _on_shell_changed(shell: Node2D) -> void:
 	if shell is DroneBot:
 		_tip("TIP_SHELL_DRONE")
 	elif shell is EnemyBot:
-		_tip("TIP_SHELL_BOT")
+		# 每种壳第一次夺到时，弹出它自己的异体能力说明
+		if shell.shielded:
+			_tip("TIP_SHELL_SHIELD")
+		else:
+			_tip({"gunner": "TIP_SHELL_GUNNER", "burst": "TIP_SHELL_BURST", "rusher": "TIP_SHELL_RUSHER"}.get(shell.kind, "TIP_SHELL_BOT"))
 	elif shell is HeavyBot:
 		_tip("TIP_SHELL_HEAVY")
 	elif shell is Wisp:

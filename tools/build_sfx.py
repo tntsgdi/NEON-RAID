@@ -38,6 +38,12 @@ SFX = {
     "ui_open": {"cat": "ui", "layers": [("@sweep", 0.0, 0.16, 0), ("@click", 0.0, 0.01, -8)]},
     "ui_card": {"cat": "ui", "layers": [("@click", 0.0, 0.01, -2), ("IMPACT_LOW_THUD_10", 0.0, 0.30, 0), ("@ring", 0.0, 0.35, -5)]},
     "ui_ready": {"cat": "ui", "layers": [("@blip_hi", 0.0, 0.09, 0), ("@blip", 0.0, 0.05, -6)]},
+    # 附身异体
+    "mut_grow": {"cat": "whoosh", "layers": [("@crystal", 0.0, 0.35, 0), ("@sweep", 0.0, 0.2, -6)]},
+    "rail_charge": {"cat": "ui", "layers": [("@hum", 0.0, 0.6, 0)]},
+    "rail_fire": {"cat": "hit", "layers": [("@click", 0.0, 0.01, 0), ("@zap", 0.0, 0.35, 0), ("SCIWeap_Shot Pulse YR 05", 0.0, 0.3, -6)]},
+    "swarm": {"cat": "whoosh", "layers": [("@zap", 0.0, 0.12, -4), ("@zap", 0.06, 0.12, -6), ("@zap", 0.12, 0.12, -8), ("SCIWeap_Shot Pulse YR 05", 0.0, 0.2, -10)]},
+    "grapple": {"cat": "whoosh", "layers": [("@zap", 0.0, 0.18, -2), ("Whoosh_Cloth_Leather_Fight_174", 0.0, 0.2, -4)]},
     "walljump": {"cat": "whoosh", "layers": [("Whoosh_Cloth_Leather_Fight_174", 0.0, 0.30, 0)]},
     "land": {"cat": "ui", "layers": [("IMPACT_LOW_THUD_10", 0.0, 0.20, 0)]},
     "slide": {"cat": "ui", "lp": 5000, "layers": [("EFX SD Sliding Whoosh By 06", 0.0, 0.45, 0)]},
@@ -78,6 +84,29 @@ def synth(kind, dur):
         f = 2200 if kind == "@blip" else 3300
         x = np.sin(2 * np.pi * f * t) + 0.15 * np.sin(2 * np.pi * 3 * f * t)
         return (x * np.exp(-t * 45) * np.minimum(t / 0.002, 1)).astype(np.float32)
+    if kind == "@crystal":
+        # 晶体生长：一串快速的高频碎裂声（随机短促的高音粒子）
+        x = np.zeros(n)
+        rng = np.random.default_rng(21)
+        for k in range(14):
+            at = int(rng.uniform(0, dur * 0.8) * RATE)
+            f = rng.uniform(2400, 5200)
+            m = min(n - at, int(0.03 * RATE))
+            tt = np.arange(m) / RATE
+            x[at:at + m] += np.sin(2 * np.pi * f * tt) * np.exp(-tt * 140)
+        return x.astype(np.float32)
+    if kind == "@hum":
+        # 蓄力嗡鸣：180 → 520 Hz 上扫的锯齿波，越来越响
+        f = 180 + 340 * (t / max(dur, 1e-3)) ** 1.5
+        ph = np.cumsum(f) / RATE
+        x = 2 * (ph % 1.0) - 1
+        return (x * np.minimum(t / dur, 1.0) * 0.8).astype(np.float32)
+    if kind == "@zap":
+        # 电磁放电：下扫的方波 + 噪声
+        f = 2200 * np.exp(-t * 9) + 120
+        ph = 2 * np.pi * np.cumsum(f) / RATE
+        x = np.sign(np.sin(ph)) * 0.6 + np.random.default_rng(4).standard_normal(n) * 0.25
+        return (x * np.exp(-t * 10)).astype(np.float32)
     if kind == "@sweep":
         # 面板展开：500→1800 Hz 上扫，带轻微噪声质感
         f = 500 + 1300 * (t / max(dur, 1e-3)) ** 0.7

@@ -219,7 +219,7 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	_iframes = 0.25
 	mut_k = 0.0
 	Fx.sparks(fx_parent, global_position, Vector2.UP, 12, Color(1.0, 2.2, 2.4))
-	Audio.play("charge", -6.0, 1.8)
+	Audio.play("mut_grow", -2.0, 1.2)
 	remove_from_group("enemy")
 	remove_from_group("hittable")
 	remove_from_group("possessable")
@@ -322,7 +322,7 @@ func _try_grab(aim: Vector2) -> void:
 	if grab is EnemyBot:
 		grab.state = EnemyBot.State.STAGGER
 		grab._t = 1.0
-	Audio.play("possess", -8.0, 1.6)
+	Audio.play("grapple", -2.0)
 	Fx.sparks(fx_parent, grab.hurt_rect().get_center(), (global_position - grab.global_position).normalized(), 8, Color(1.0, 2.2, 2.4))
 
 
