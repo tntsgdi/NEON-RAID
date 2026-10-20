@@ -146,7 +146,7 @@ func update(m: Dictionary, delta: float) -> void:
 	if state != _last_mode:
 		# 动作切换：记下旧脚位与新目标的差，接下来让它平滑衰减
 		for i in 2:
-			_toe_off[i] = _last_toes[i] - feet[i][0]
+			_toe_off[i] = _last_toes[i] - feet[i][0] - Vector2(0, _toe_shift)  # 台阶补偿另外单独衰减，别算两遍
 			_tilt_off[i] = _last_tilts[i] - feet[i][1]
 		_inert_t = 0.0
 		_last_mode = state

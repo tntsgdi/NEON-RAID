@@ -44,8 +44,12 @@ var _shell_text := ""
 var _shell_wipe := 1.0
 var _oc_age := 0.0
 var _t := 0.0
-## 夺壳冷却剩余比例（1 = 刚夺完）
-var possess_k := 0.0
+## 夺壳冷却剩余比例（1 = 刚夺完）；冷却结束那一刻"叮"一声
+var possess_k := 0.0:
+	set(v):
+		if possess_k > 0.0 and v <= 0.0:
+			Audio.play("ui_ready", -6.0)
+		possess_k = v
 var _hp_k := 1.0
 
 
@@ -60,9 +64,9 @@ func _ready() -> void:
 	_speed = _label(Vector2(432, 18), 8, HORIZONTAL_ALIGNMENT_RIGHT)
 	_speed.size.y = 40
 	_speed.modulate = Color(1, 1, 1, 0.7)
-	_hint = _label(Vector2(8, 344), 7, HORIZONTAL_ALIGNMENT_LEFT)
+	_hint = _label(Vector2(8, 343), 8, HORIZONTAL_ALIGNMENT_LEFT)
 	_hint.size.x = 624
-	_hint.modulate = Color(1, 1, 1, 0.55)
+	_hint.modulate = Color(1, 1, 1, 0.75)
 	_tip = _label(Vector2(50, 300), 10, HORIZONTAL_ALIGNMENT_CENTER)
 	_tip.size = Vector2(540, 30)
 	_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -104,6 +108,7 @@ func refresh(section_text: String, run_time: float, best: float, speed: float, f
 		_section_text = section_text
 		_section.text = section_text
 		_wipe = 0.0
+		Audio.play("ui_tick", -2.0)
 	_time.text = tr("HUD_TIME") % _fmt(run_time)
 	var right := ""
 	if best >= 0.0:
@@ -123,6 +128,7 @@ func set_shell(text: String) -> void:
 	_shell_text = text
 	_shell.text = text
 	_shell_wipe = 0.0
+	Audio.play("ui_tick", -4.0, 0.9)
 
 
 ## 屏幕下方的提示：切角面板滑入，显示几秒后滑出
@@ -131,6 +137,7 @@ func show_tip(text: String) -> void:
 	_tip.visible = true
 	if _tip_time <= 0.0:
 		_tip_in = 0.0
+		Audio.play("ui_tick", -8.0, 1.2)
 	_tip_time = 4.5
 
 
@@ -142,6 +149,7 @@ func show_card(title: String, body: String) -> void:
 	_card_body.visible = true
 	_card_time = 5.0
 	_card_age = 0.0
+	Audio.play("ui_card")
 
 
 func _process(delta: float) -> void:
@@ -262,7 +270,7 @@ func _draw_module() -> void:
 	else:
 		draw_colored_polygon(dia, Color(1.5, 1.7, 1.8, 0.85 + 0.15 * sin(_t * 5.0)))
 	var font := ThemeDB.fallback_font
-	draw_string(font, pc + Vector2(-17, 3), "E", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, C_DIM if possess_k > 0.0 else C_TEXT)
+	draw_string(font, pc + Vector2(-40, 3), tr("HUD_POSSESS"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7, C_DIM if possess_k > 0.0 else C_TEXT)
 	# 分段血条：平行四边形格子
 	if _max_hp > 0:
 		var col := StriderRig.core_color(_hp_k, _t)

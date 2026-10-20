@@ -8,6 +8,7 @@ const NAMES := [
 	"dash", "walljump", "land", "slide",
 	"shot", "enemy_shot", "deflect", "overclock", "hurt", "charge", "shield_block",
 	"sprint", "possess",
+	"ui_tick", "ui_open", "ui_card", "ui_ready",
 ]
 
 var _streams := {}

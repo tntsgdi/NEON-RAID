@@ -87,6 +87,8 @@ var _push_wall := 0.0
 ## 刀索敌突进：剩余时间和速度
 var _lunge_t := 0.0
 var _lunge_vel := Vector2.ZERO
+## 突进前的水平速度：突进完保留八成，疾驰中砍一刀不掉速
+var _lunge_keep := 0.0
 
 # 挥刀层
 var slash_step := -1
@@ -195,6 +197,8 @@ func _physics_process(delta: float) -> void:
 			_spawn_ghost(0.35)
 		if _lunge_t <= 0.0:
 			velocity = _lunge_vel.normalized() * 120.0
+			if absf(velocity.x) < _lunge_keep:
+				velocity.x = signf(_lunge_vel.x) * _lunge_keep
 	var vy_before := velocity.y
 	var vx_before := velocity.x
 	var y_before := global_position.y
@@ -434,7 +438,7 @@ func _jump(T: Dictionary) -> void:
 	velocity.y = -T.jump_velocity
 	_jump_buffer = 0.0
 	_coyote = 0.0
-	_squash = Vector2(0.8, 1.22)
+	_squash = Vector2(0.88, 1.14)
 	_set_state(State.AIR)
 	Fx.dust(fx_parent, global_position, 0.0, 6)
 
@@ -446,7 +450,7 @@ func _wall_jump(T: Dictionary, wall: int) -> void:
 		# 墙面行走中：沿墙向上蹿一大截，脚不离墙
 		velocity = Vector2(wall * 30.0, minf(velocity.y, 0.0) - T.wall_climb_y)
 		_jump_buffer = 0.0
-		_squash = Vector2(0.85, 1.18)
+		_squash = Vector2(0.9, 1.12)
 		Fx.dust(fx_parent, global_position + Vector2(wall * 6, -6), float(-wall), 4)
 		Audio.play("walljump", -8.0, 1.15)
 		return
@@ -463,7 +467,7 @@ func _wall_jump(T: Dictionary, wall: int) -> void:
 	_coyote = 0.0
 	_wall_coyote = 0.0
 	_air_hang_used = false
-	_squash = Vector2(0.82, 1.2)
+	_squash = Vector2(0.88, 1.13)
 	_set_state(State.AIR)
 	Fx.dust(fx_parent, global_position + Vector2(wall * 6, -12), float(-wall), 5)
 	Fx.ring(fx_parent, global_position + Vector2(wall * 6, -16), 18.0)
@@ -646,6 +650,16 @@ func _start_slash(step: int, T: Dictionary) -> void:
 			facing = int(signf(to.x))
 		_slash_aim = to.normalized()
 		var gap := to.length() - MELEE_STOP
+		# 地面突进不冲出平台：沿路径每 12 像素探一下脚下 40 像素有没有地，没有就停在边上
+		if state == State.GROUND and gap > 4.0:
+			var dir := to.normalized()
+			var d := 12.0
+			while d <= gap:
+				if not test_move(global_transform.translated(Vector2(dir.x * d, 0)), Vector2(0, 40)):
+					gap = d - 12.0
+					break
+				d += 12.0
+		_lunge_keep = absf(velocity.x) * 0.8 if signf(velocity.x) == signf(to.x) else 0.0
 		if gap > 4.0:
 			_lunge_vel = to.normalized() * gap / MELEE_LUNGE_TIME
 			if state == State.GROUND and _lunge_vel.y > 0.0:
@@ -957,7 +971,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 		rig.position = rig.position.lerp(Vector2(_wall_dir * 6.0, -18.0), 1.0 - exp(-20.0 * delta))
 		ratio = absf(velocity.y) / T.run_speed
 	else:
-		rig.rotation = lerp_angle(rig.rotation, 0.0, 1.0 - exp(-14.0 * delta))
+		rig.rotation = lerp_angle(rig.rotation, 0.0, 1.0 - exp(-10.0 * delta))
 		rig.position = rig.position.lerp(Vector2.ZERO, 1.0 - exp(-16.0 * delta))
 	rig.scale = Vector2((signf(t) if t != 0.0 else float(rig_facing)) * maxf(absf(t), 0.08) * _squash.x, _squash.y)
 	var mode := "idle"

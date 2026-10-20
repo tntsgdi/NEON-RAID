@@ -33,6 +33,11 @@ SFX = {
     "break": {"cat": "hit", "layers": [("demolisher_metal_impact_002", 0.0, 1.0, 0), ("glass_impact_break_small_014", 0.0, 0.5, -10)]},
     # 移动：只留短促、低调的声音
     "dash": {"cat": "whoosh", "layers": [("WHSH_InsJ_Whooshing_Low_Double_01-01", 0.04, 0.19, 0)]},
+    # 界面音：短促、偏高频、比战斗音低（ui 类别 -24 dB）
+    "ui_tick": {"cat": "ui", "layers": [("@click", 0.0, 0.01, -8), ("@blip", 0.0, 0.06, 0)]},
+    "ui_open": {"cat": "ui", "layers": [("@sweep", 0.0, 0.16, 0), ("@click", 0.0, 0.01, -8)]},
+    "ui_card": {"cat": "ui", "layers": [("@click", 0.0, 0.01, -2), ("IMPACT_LOW_THUD_10", 0.0, 0.30, 0), ("@ring", 0.0, 0.35, -5)]},
+    "ui_ready": {"cat": "ui", "layers": [("@blip_hi", 0.0, 0.09, 0), ("@blip", 0.0, 0.05, -6)]},
     "walljump": {"cat": "whoosh", "layers": [("Whoosh_Cloth_Leather_Fight_174", 0.0, 0.30, 0)]},
     "land": {"cat": "ui", "layers": [("IMPACT_LOW_THUD_10", 0.0, 0.20, 0)]},
     "slide": {"cat": "ui", "lp": 5000, "layers": [("EFX SD Sliding Whoosh By 06", 0.0, 0.45, 0)]},
@@ -68,6 +73,17 @@ def synth(kind, dur):
         ph = 2 * np.pi * np.cumsum(f) / RATE
         x = np.sin(ph) + 0.4 * np.sin(2.01 * ph) + 0.2 * np.sin(3.03 * ph)
         return (x * np.exp(-t * 18) * np.minimum(t / 0.004, 1)).astype(np.float32)
+    if kind in ("@blip", "@blip_hi"):
+        # 电子提示音：纯正弦 + 一点三次泛音，2 ms 起音、快速衰减
+        f = 2200 if kind == "@blip" else 3300
+        x = np.sin(2 * np.pi * f * t) + 0.15 * np.sin(2 * np.pi * 3 * f * t)
+        return (x * np.exp(-t * 45) * np.minimum(t / 0.002, 1)).astype(np.float32)
+    if kind == "@sweep":
+        # 面板展开：500→1800 Hz 上扫，带轻微噪声质感
+        f = 500 + 1300 * (t / max(dur, 1e-3)) ** 0.7
+        ph = 2 * np.pi * np.cumsum(f) / RATE
+        x = np.sin(ph) + 0.08 * np.random.default_rng(5).standard_normal(n)
+        return (x * np.sin(np.pi * np.minimum(t / dur, 1.0)) ** 0.5).astype(np.float32)
     sys.exit("未知合成层：" + kind)
 
 

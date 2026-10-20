@@ -60,6 +60,7 @@ var _tw: Tween
 ## 打开：从一条横线纵向展开（0.16 秒）；关闭：收回成横线再隐藏
 func toggle() -> void:
 	is_open = not is_open
+	Audio.play("ui_open", -2.0, 1.0 if is_open else 0.8)
 	if _tw:
 		_tw.kill()
 	pivot_offset = size * 0.5
