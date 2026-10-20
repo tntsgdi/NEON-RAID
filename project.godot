@@ -14,6 +14,7 @@ Tuning="*res://scripts/core/tuning.gd"
 I18n="*res://scripts/core/i18n.gd"
 Audio="*res://scripts/core/audio.gd"
 TimeFx="*res://scripts/core/time_fx.gd"
+Music="*res://scripts/core/music.gd"
 Controls="*res://scripts/core/controls.gd"
 
 [display]

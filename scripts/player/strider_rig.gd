@@ -2,7 +2,7 @@ class_name StriderRig
 extends Node2D
 ## R-0 基础机体：反关节（鸟腿）双足机。全部程序化：
 ##   楔形机身——天生前倾，疾跑时压到约 40°，倾角由弹簧驱动（加速前冲、急停后坐、落地回弹）
-##   反曲腿——两节 IK 求落脚点；跑步有腾空期，触地时脚与地面同速不打滑
+##   鸟腿——大腿/小腿/跖骨三节（膝朝前、踝朝后），IK 求落脚点；跑步有腾空期，触地时脚与地面同速不打滑
 ##   刀臂——右臂就是长刀，平时拖在身后；挥刀 = 短蓄力 → 全身扭转劈下 → 挥过头再收回
 ##   背炮——机身背上的小炮塔 360° 跟鼠标
 ##   线缆——背后两条发光线缆按弹簧物理被风往后拉
@@ -15,13 +15,14 @@ const FILL := Color(0.15, 0.18, 0.24)
 const FILL_BACK := Color(0.09, 0.11, 0.15)
 const BLADE := Color(0.85, 1.0, 1.0)
 
-const HIP_H := 20.0
-const THIGH := 11.0
-const SHIN := 11.0
+const HIP_H := 21.0
+const THIGH := 13.0
+const SHIN := 13.0
+## 跖骨：踝关节在脚尖的后上方
+const META := Vector2(-3.0, -7.5)
 const BLADE_LEN := 26.0
 const ARM_LEN := 6.0
-## 一个跑步周期走过的像素；触地占 40%，其余是摆腿（两条腿交替，中间有腾空）
-const STRIDE := 64.0
+## 触地占一个跑步周期的 40%，其余是摆腿（两条腿交替，中间有腾空）
 const STANCE := 0.4
 
 ## 挥刀三段：刀相对出刀方向的起止角（度）和挥过头的角度
@@ -75,8 +76,10 @@ func update(m: Dictionary, delta: float) -> void:
 	var target_y := -HIP_H
 	match state:
 		"run":
-			target_angle = 14.0 + 26.0 * clampf(ratio, 0.0, 1.3)
-			target_y = -HIP_H + 1.5 - absf(sin(m.run_phase * TAU * 2.0)) * 2.5 * ratio
+			# 每一步：落地时压低、蹬地时弹起，机身跟着点头
+			var beat: float = sin(m.run_phase * TAU * 2.0)
+			target_angle = 14.0 + 26.0 * clampf(ratio, 0.0, 1.3) + beat * 3.0 * ratio
+			target_y = -HIP_H + 2.5 - absf(beat) * 4.5 * clampf(ratio, 0.0, 1.0)
 		"idle":
 			target_angle = 10.0 + sin(m.time * 2.2) * 1.5
 			target_y = -HIP_H + 1.0 + sin(m.time * 2.2) * 0.6
@@ -104,14 +107,15 @@ func update(m: Dictionary, delta: float) -> void:
 	hull_angle += _hull_vel * delta
 	_pelvis_vel += ((target_y - _pelvis_y) * 500.0 - _pelvis_vel * 30.0) * delta
 	_pelvis_y += _pelvis_vel * delta
-	var pelvis := Vector2(0, _pelvis_y)
+	# 贴墙时机身挪离墙面，不插进墙里（墙在身后）
+	var pelvis := Vector2(8.0 if state == "wall" else 0.0, _pelvis_y)
 	var rot := deg_to_rad(hull_angle)
 
-	# ---- 腿：落脚点 → 两节 IK（膝盖朝后）
+	# ---- 腿：脚尖落点 → 三节 IK（膝朝前、踝朝后）
 	var feet := _foot_targets(m, pelvis)
 	var legs := []
 	for i in 2:
-		legs.append(_leg(pelvis, feet[i]))
+		legs.append(_leg(pelvis, feet[i][0], feet[i][1]))
 
 	# ---- 刀臂
 	var shoulder := pelvis + SHOULDER.rotated(rot)
@@ -173,60 +177,70 @@ func update(m: Dictionary, delta: float) -> void:
 	queue_redraw()
 
 
+## 跑步步幅随速度从 48 拉长到 72 像素
+static func stride(ratio: float) -> float:
+	return lerpf(48.0, 72.0, clampf(ratio, 0.0, 1.0))
+
+
+## 每条腿返回 [脚尖位置, 跖骨方向偏转（度，正值脚尖下垂）]
 func _foot_targets(m: Dictionary, pelvis: Vector2) -> Array:
-	var ground := -3.0
 	match m.state:
 		"run":
 			var out := []
+			var length := stride(m.speed_ratio)
 			for i in 2:
 				var p := fmod(m.run_phase + 0.5 * i, 1.0)
-				var half := STRIDE * STANCE * 0.5
-				var x: float
-				var y := ground
+				var half := length * STANCE * 0.5
 				if p < STANCE:
-					x = lerpf(half, -half, p / STANCE)
+					out.append([Vector2(lerpf(half, -half, p / STANCE) + 4.0, 0.0), 0.0])
 				else:
 					var s := (p - STANCE) / (1.0 - STANCE)
-					x = lerpf(-half, half, s * s * (3.0 - 2.0 * s))
-					y = ground - sin(s * PI) * (5.0 + 7.0 * clampf(m.speed_ratio, 0.0, 1.0))
-				out.append(Vector2(x + 4.0, y))
+					var x := lerpf(-half, half, s * s * (3.0 - 2.0 * s))
+					var lift := sin(s * PI) * (6.0 + 8.0 * clampf(m.speed_ratio, 0.0, 1.0))
+					out.append([Vector2(x + 4.0, -lift), 35.0 * sin(s * PI)])
 			return out
 		"skid":
-			return [Vector2(13, ground), Vector2(-3, ground)]
+			return [[Vector2(15, 0), -10.0], [Vector2(-3, 0), 0.0]]
 		"air":
 			var tuck := clampf(-m.vel.y / 450.0, 0.0, 1.0)
-			return [pelvis + Vector2(5, lerpf(16.0, 9.0, tuck)), pelvis + Vector2(-7, lerpf(15.0, 11.0, tuck))]
+			return [[pelvis + Vector2(7, lerpf(21.0, 13.0, tuck)), 30.0 * tuck], [pelvis + Vector2(-6, lerpf(20.0, 15.0, tuck)), 40.0]]
 		"dash":
-			return [pelvis + Vector2(-8, 13), pelvis + Vector2(-15, 9)]
+			return [[pelvis + Vector2(-10, 17), 50.0], [pelvis + Vector2(-19, 12), 60.0]]
 		"slide":
-			return [Vector2(17, ground), Vector2(-6, ground)]
+			return [[Vector2(20, 0), -20.0], [Vector2(-6, 0), 0.0]]
 		"wall":
-			return [pelvis + Vector2(-6, 8), pelvis + Vector2(-6, 16)]
-	return [Vector2(5, ground), Vector2(-5, ground)]
+			# 一只脚抵住身后的墙，另一条腿收起
+			return [[Vector2(-6, -9), -80.0], [pelvis + Vector2(2, 13), 50.0]]
+	return [[Vector2(6, 0), 0.0], [Vector2(-5, 0), 0.0]]
 
 
-## 两节 IK：膝盖朝后（反关节）。返回 [髋, 膝, 踝, 脚尖]
-func _leg(hip: Vector2, ankle: Vector2) -> Array:
+## 三节 IK：脚尖 → 踝（跖骨固定长度），髋 → 踝用两节、膝盖朝前。返回 [髋, 膝, 踝, 脚尖]
+func _leg(hip: Vector2, toe: Vector2, meta_tilt: float) -> Array:
+	var ankle := toe + META.rotated(deg_to_rad(meta_tilt))
 	var d := hip.distance_to(ankle)
 	var reach := THIGH + SHIN - 0.5
 	if d > reach:
-		ankle = hip + (ankle - hip).normalized() * reach
+		var pull := (ankle - hip).normalized() * (d - reach)
+		ankle -= pull
+		toe -= pull
 		d = reach
 	d = maxf(d, 2.0)
 	var dir := (ankle - hip) / d
 	var along := (THIGH * THIGH - SHIN * SHIN + d * d) / (2.0 * d)
 	var h := sqrt(maxf(THIGH * THIGH - along * along, 0.0))
-	var knee := hip + dir * along + Vector2(-dir.y, dir.x) * h
-	var toe := ankle + Vector2(5, 3)
+	var knee := hip + dir * along - Vector2(-dir.y, dir.x) * h
 	return [hip, knee, ankle, toe]
 
 
 func _add_leg(l: Array, fill: Color, edge: Color) -> void:
-	_shapes.append(["line", l[0], l[1], 3.5, fill])
-	_shapes.append(["line", l[1], l[2], 3.0, fill])
-	_shapes.append(["line", l[2], l[3], 2.5, fill])
-	_shapes.append(["polyline", PackedVector2Array([l[0], l[1], l[2], l[3]]), edge])
-	_shapes.append(["dot", l[1], 2.0, edge])
+	_shapes.append(["line", l[0], l[1], 5.0, edge])
+	_shapes.append(["line", l[0], l[1], 3.0, fill])
+	_shapes.append(["line", l[1], l[2], 4.0, edge])
+	_shapes.append(["line", l[1], l[2], 2.2, fill])
+	_shapes.append(["line", l[2], l[3], 3.0, edge])
+	_shapes.append(["dot", l[1], 2.6, edge])
+	_shapes.append(["dot", l[2], 2.0, fill])
+	_shapes.append(["line", l[3], l[3] + Vector2(3, 0), 2.0, edge])
 
 
 ## 挥刀：0–15% 回拉蓄力，15–55% 劈过去并挥过头，之后收回到终点

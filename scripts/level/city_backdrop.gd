@@ -5,16 +5,29 @@ extends Node2D
 var tint := Color(0.06, 0.08, 0.12)
 var height := 200.0
 var seed_value := 1
-var window_color := Color(0.25, 0.85, 0.95, 0.14)
+var window_color := Color(0.25, 0.85, 0.95, 0.3)
 
 
 static func make() -> Node2D:
 	var root := Node2D.new()
 	root.name = "Backdrop"
 	# 背景压暗、低对比，免得被当成能站能蹬的墙
-	root.add_child(_layer(Vector2(0.15, 0.3), Color(0.028, 0.034, 0.052), 260.0, 7))
-	root.add_child(_layer(Vector2(0.4, 0.6), Color(0.042, 0.05, 0.075), 180.0, 3))
+	root.add_child(_layer(Vector2(0.15, 0.3), Color(0.05, 0.06, 0.09), 260.0, 7))
+	root.add_child(_layer(Vector2(0.4, 0.6), Color(0.075, 0.085, 0.12), 180.0, 3))
 	return root
+
+
+## 前景：比机体移动得更快的灯柱剪影（视差 1.5），高速跑过时一根根掠过
+static func make_foreground() -> Node2D:
+	var p := Parallax2D.new()
+	p.name = "Foreground"
+	p.scroll_scale = Vector2(1.5, 1.0)
+	p.repeat_size = Vector2(420, 0)
+	p.repeat_times = 4
+	p.z_index = 20
+	var poles := ForegroundPoles.new()
+	p.add_child(poles)
+	return p
 
 
 static func _layer(scroll: Vector2, col: Color, h: float, s: int) -> Parallax2D:

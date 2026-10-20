@@ -1,27 +1,29 @@
 class_name EnemyBot
 extends CharacterBody2D
-## 轻型安保机（M2 第一种敌人）。shielded = 盾兵变体。
-## 巡逻 → 看见玩家 → 0.5 秒红色瞄准线（最后 0.12 秒锁定方向，躲得开）→ 一发慢速红弹 → 冷却。
-## 被打：硬直 + 击退；上挑或重击会被打上天，可以空中连击；4 血，打空爆碎。
+## 联合体安保机器人（M2）。三种型号，shielded 可以叠加在任何型号上：
+##   gunner  轻型安保机：0.5 秒瞄准线（最后 0.12 秒锁定）→ 一发慢速红弹
+##   burst   三连发机：0.6 秒瞄准 → 扇形三发
+##   rusher  冲锋机：0.4 秒蓄力（身体压低、目镜闪红）→ 直线冲撞；冲刺能穿过去，
+##           冲锋时被正面砍中 = 招架，长硬直 + 神经超频
+## 被打：硬直 + 击退；上挑或重击会被打上天，可以空中连击；打空血量爆碎。
 ## 盾兵：正面能量盾，子弹从正面打会被弹开；刀砍 3 下破盾；从背后或头上打直接伤本体。
 
 signal died(bot: EnemyBot)
 
-enum State { PATROL, AIM, COOLDOWN, STAGGER, AIR, DEAD }
+enum State { PATROL, AIM, COOLDOWN, STAGGER, AIR, WINDUP, CHARGE, DEAD }
 
-const RED := Color(0.92, 0.2, 0.26)
+const RED := Color(0.95, 0.22, 0.28)
 const DARK := Color(0.2, 0.05, 0.08)
+const METAL := Color(0.42, 0.38, 0.44)
 const SIZE := Vector2(14, 34)
 const GRAVITY := 1400.0
 const WALK := 45.0
 const SIGHT := Vector2(300, 150)
-const AIM_TIME := 0.5
 const LOCK_TIME := 0.12
-const COOLDOWN := 1.1
-const BULLET_SPEED := 260.0
 const MAX_HP := 4
 const SHIELD_HP := 3
 
+var kind := "gunner"
 var shielded := false
 var patrol_range := 50.0
 var player: Node2D
@@ -39,6 +41,7 @@ var _flash := 0.0
 var _shield_flash := 0.0
 var _walk_phase := 0.0
 var _spawn_pop := 0.25
+var _hit_player := false
 
 
 func _ready() -> void:
@@ -54,6 +57,8 @@ func _ready() -> void:
 	add_to_group("hittable")
 	add_to_group("enemy")
 	_home = global_position
+	if kind == "rusher":
+		hp = 3
 	if fx_parent == null:
 		fx_parent = get_parent()
 
@@ -71,25 +76,33 @@ func center() -> Vector2:
 
 
 func gun_pos() -> Vector2:
-	return global_position + Vector2(facing * 9, -21)
+	return global_position + Vector2(facing * 10, -27)
 
 
 func has_shield() -> bool:
 	return shielded and shield_hp > 0
 
 
+func aim_time() -> float:
+	return 0.6 if kind == "burst" else 0.5
+
+
 ## 返回 0 = 没打到，1 = 打到，2 = 被盾挡住（子弹会弹开）
-func take_hit(dir: Vector2, power: int, kind := "slash") -> int:
+func take_hit(dir: Vector2, power: int, hit_kind := "slash") -> int:
 	if not alive():
 		return 0
 	var from_front := dir.x * facing < -0.1
 	var from_above := dir.y > 0.5
+	# 冲锋中被正面砍中：招架
+	if state == State.CHARGE and hit_kind == "slash" and from_front:
+		_parried(dir)
+		return 1
 	if has_shield() and from_front and not from_above:
-		if kind == "bullet":
+		if hit_kind == "bullet":
 			_shield_flash = 0.08
 			return 2
 		shield_hp -= power
-		_shield_flash = 0.1
+		_shield_flash = 0.12
 		velocity.x = signf(dir.x) * 90.0
 		if shield_hp <= 0:
 			Fx.debris(fx_parent, center() + Vector2(facing * 10, 0), dir, 10, RED)
@@ -99,13 +112,13 @@ func take_hit(dir: Vector2, power: int, kind := "slash") -> int:
 			Audio.play("shield_block", -4.0)
 		return 1
 	hp -= power
-	_flash = 0.08
+	_flash = 0.1
 	var sx := signf(dir.x) if absf(dir.x) > 0.1 else float(-facing)
 	velocity.x = sx * (150.0 + 80.0 * power)
 	if dir.y < -0.5:
 		velocity.y = -360.0  # 上挑：打上天
 		state = State.AIR
-	elif state == State.AIR or (power >= 2 and kind == "slash" and dir.y <= 0.1):
+	elif state == State.AIR or (power >= 2 and hit_kind == "slash" and dir.y <= 0.1):
 		velocity.y = minf(velocity.y, -240.0)  # 空中连击 / 重击：保持浮空
 		state = State.AIR
 	else:
@@ -114,6 +127,17 @@ func take_hit(dir: Vector2, power: int, kind := "slash") -> int:
 	if hp <= 0:
 		_die(dir)
 	return 1
+
+
+func _parried(dir: Vector2) -> void:
+	state = State.STAGGER
+	_t = 1.0
+	velocity = Vector2(signf(dir.x) * 260.0, -160.0)
+	_flash = 0.12
+	Fx.sparks(fx_parent, center(), dir, 16, Color.WHITE)
+	Audio.play("deflect", -2.0, 0.85)
+	if is_instance_valid(player) and player.has_method("parried"):
+		player.parried()
 
 
 func _die(dir: Vector2) -> void:
@@ -138,6 +162,16 @@ func _physics_process(delta: float) -> void:
 			_patrol(delta)
 		State.AIM:
 			_aim(delta)
+		State.WINDUP:
+			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+			_t -= delta
+			if _t <= 0.0:
+				state = State.CHARGE
+				_t = 0.55
+				_hit_player = false
+				Audio.play("dash", -6.0, 0.8)
+		State.CHARGE:
+			_charge(delta)
 		State.COOLDOWN:
 			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
 			_t -= delta
@@ -160,10 +194,14 @@ func _physics_process(delta: float) -> void:
 
 func _patrol(delta: float) -> void:
 	if _sees_player():
-		state = State.AIM
-		_t = AIM_TIME
 		facing = 1 if player.global_position.x > global_position.x else -1
-		Audio.play("charge", -16.0)
+		if kind == "rusher":
+			state = State.WINDUP
+			_t = 0.4
+		else:
+			state = State.AIM
+			_t = aim_time()
+		Audio.play("charge", -10.0)
 		return
 	if global_position.x > _home.x + patrol_range:
 		facing = -1
@@ -182,18 +220,44 @@ func _aim(delta: float) -> void:
 		facing = 1 if player.global_position.x > global_position.x else -1
 		aim_dir = (player.global_position + Player.CHEST - gun_pos()).normalized()
 	if _t <= 0.0:
-		Bullet.fire(fx_parent, gun_pos(), aim_dir * BULLET_SPEED, Bullet.Team.ENEMY, 1, self)
-		Audio.play("enemy_shot", -8.0)
-		Fx.sparks(fx_parent, gun_pos(), aim_dir, 4, RED)
+		if kind == "burst":
+			for a in [-12.0, 0.0, 12.0]:
+				Bullet.fire(fx_parent, gun_pos(), aim_dir.rotated(deg_to_rad(a)) * 300.0, Bullet.Team.ENEMY, 1, self)
+			Audio.play("enemy_shot", -4.0, 0.85)
+		else:
+			Bullet.fire(fx_parent, gun_pos(), aim_dir * 260.0, Bullet.Team.ENEMY, 1, self)
+			Audio.play("enemy_shot", -6.0)
+		Fx.sparks(fx_parent, gun_pos(), aim_dir, 5, RED)
 		state = State.COOLDOWN
-		_t = COOLDOWN
+		_t = 1.6 if kind == "burst" else 1.1
+
+
+func _charge(delta: float) -> void:
+	velocity.x = facing * 420.0
+	_t -= delta
+	_walk_phase += delta * 24.0
+	if not _hit_player and is_instance_valid(player) and hurt_rect().grow(2.0).intersects(player.hurt_rect()):
+		_hit_player = true
+		# 撞上的一刻玩家正面朝这边、正在出刀：算招架
+		if player.has_method("parry_ready") and player.parry_ready(facing):
+			_parried(Vector2(-facing, 0))
+			return
+		if player.has_method("melee_hit"):
+			player.melee_hit(Vector2(facing, -0.3).normalized(), 1)
+	if _t <= 0.0 or is_on_wall():
+		if is_on_wall():
+			Fx.sparks(fx_parent, global_position + Vector2(facing * 8, -16), Vector2(-facing, 0), 8, RED)
+			Audio.play("shield_block", -8.0, 0.7)
+		state = State.COOLDOWN
+		_t = 1.0
 
 
 func _sees_player() -> bool:
 	if not is_instance_valid(player):
 		return false
 	var d := player.global_position - global_position
-	if absf(d.x) > SIGHT.x or absf(d.y) > SIGHT.y:
+	var sight := Vector2(220, 60) if kind == "rusher" else SIGHT
+	if absf(d.x) > sight.x or absf(d.y) > sight.y:
 		return false
 	var q := PhysicsRayQueryParameters2D.create(gun_pos(), player.global_position + Player.CHEST, 1)
 	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
@@ -203,35 +267,70 @@ func _draw() -> void:
 	var white := _flash > 0.0
 	var fill := Color.WHITE if white else DARK
 	var s := 1.0 + _spawn_pop * 2.0
+	# 瞄准时身体后仰，冲锋蓄力时压低前倾
+	var lean := 0.0
+	if state == State.AIM:
+		lean = -0.1 * facing
+	elif state == State.WINDUP:
+		lean = 0.25 * facing
+	elif state == State.CHARGE:
+		lean = 0.35 * facing
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(s, s))
-	# 腿
-	var step := sin(_walk_phase) * 3.0 if state == State.PATROL else 0.0
-	draw_rect(Rect2(-5 + step, -11, 3, 11), RED)
-	draw_rect(Rect2(2 - step, -11, 3, 11), RED)
-	# 身体与头
-	var body := Rect2(-7, -30, 14, 19)
-	draw_rect(body, fill)
-	draw_rect(body, RED, false, 1.5)
-	var head := Rect2(-5, -38, 10, 8)
+	# 腿：两节，走路时交替
+	var step := sin(_walk_phase) * 3.0 if state in [State.PATROL, State.CHARGE] else 0.0
+	for side in [-1, 1]:
+		var hip := Vector2(side * 3, -13)
+		var foot := Vector2(side * 3 + step * side, 0)
+		var knee := (hip + foot) * 0.5 + Vector2(facing * 2.5, 0)
+		draw_polyline(PackedVector2Array([hip, knee, foot]), RED.darkened(0.2 if side < 0 else 0.0), 2.5, true)
+	draw_set_transform(Vector2(0, -13), lean, Vector2(s, s))
+	# 躯干（梯形）与肩甲
+	var body := PackedVector2Array([Vector2(-7, 0), Vector2(7, 0), Vector2(8, -17), Vector2(-8, -17)])
+	draw_colored_polygon(body, fill)
+	draw_polyline(body + PackedVector2Array([body[0]]), RED, 1.5, true)
+	draw_rect(Rect2(-facing * 10 - 3, -18, 6, 5), METAL)
+	# 头与目镜
+	var head := Rect2(-5, -25, 10, 8)
 	draw_rect(head, fill)
 	draw_rect(head, RED, false, 1.5)
-	draw_rect(Rect2(0 if facing > 0 else -5, -36, 5, 2), Color.WHITE if white else RED)
-	# 枪
-	var g := Vector2(facing * 6, -21)
-	var dir := aim_dir if state == State.AIM else Vector2(facing, 0.25).normalized()
-	draw_line(g, g + dir * 9.0, Color(0.55, 0.5, 0.55), 3.0)
+	var eye_on := state in [State.AIM, State.WINDUP, State.CHARGE] and int(_t * 20.0) % 2 == 0
+	draw_rect(Rect2(0 if facing > 0 else -5, -23, 5, 2), Color.WHITE if (white or eye_on) else RED)
+	# 武器
+	var g := Vector2(facing * 8, -13)
+	if kind == "rusher":
+		# 冲锋机：前伸的撞角
+		var horn := PackedVector2Array([Vector2(facing * 6, -14), Vector2(facing * 15, -9), Vector2(facing * 6, -5)])
+		draw_colored_polygon(horn, METAL)
+		draw_polyline(horn, RED, 1.0, true)
+	else:
+		var dir := aim_dir if state == State.AIM else Vector2(facing, 0.25).normalized()
+		draw_line(g, g + dir * 10.0, METAL, 3.0, true)
+		if kind == "burst":
+			draw_line(g + Vector2(0, 3), g + Vector2(0, 3) + dir * 9.0, METAL, 2.0, true)
+		# 开火前枪口越来越亮
+		if state == State.AIM:
+			var k := 1.0 - _t / aim_time()
+			draw_circle(g + dir * 10.0, 1.0 + 2.5 * k, Color(1, 0.3 + 0.7 * k, 0.3 + 0.7 * k, 0.4 + 0.6 * k))
+	draw_set_transform(Vector2.ZERO)
 	# 瞄准线：越接近开火越亮越粗，锁定后变白
 	if state == State.AIM:
-		var k := 1.0 - _t / AIM_TIME
+		var gp := gun_pos() - global_position
+		var k := 1.0 - _t / aim_time()
 		var locked := _t <= LOCK_TIME
 		var c := Color(1, 1, 1, 0.9) if locked else Color(1, 0.2, 0.25, 0.25 + 0.5 * k)
-		draw_line(g, g + dir * 320.0, c, 1.0 + k * 1.5)
+		var spreads := [-12.0, 0.0, 12.0] if kind == "burst" else [0.0]
+		for a in spreads:
+			draw_line(gp, gp + aim_dir.rotated(deg_to_rad(a)) * 320.0, c, 1.0 + k * 1.5)
+	# 冲锋蓄力：地面上一道红色预警
+	if state == State.WINDUP:
+		var k := 1.0 - _t / 0.4
+		draw_rect(Rect2(minf(0.0, facing * 200.0), -2, 200, 2), Color(1, 0.2, 0.25, 0.2 + 0.5 * k))
 	# 能量盾
 	if has_shield():
-		var sx := facing * 11.0
+		var sx := facing * 12.0
 		var sc := Color(1, 0.85, 0.85, 0.9) if _shield_flash > 0.0 else Color(1, 0.25, 0.3, 0.35)
-		draw_rect(Rect2(sx - 2, -38, 4, 36), sc)
-		draw_rect(Rect2(sx - 2, -38, 4, 36), RED, false, 1.0)
+		var shield := PackedVector2Array([Vector2(sx - 2, -38), Vector2(sx + facing * 3, -30), Vector2(sx + facing * 3, -8), Vector2(sx - 2, -1), Vector2(sx - facing * 1, -20)])
+		draw_colored_polygon(shield, sc)
+		draw_polyline(shield + PackedVector2Array([shield[0]]), RED, 1.0, true)
 		for i in shield_hp:
-			draw_rect(Rect2(sx - 1, -34 + i * 6, 2, 4), Color.WHITE)
-	draw_set_transform(Vector2.ZERO)
+			draw_rect(Rect2(sx - 0.5, -32 + i * 7, 2, 4), Color.WHITE)

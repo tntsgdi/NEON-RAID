@@ -7,8 +7,8 @@ extends CharacterBody2D
 signal landed(impact: float)
 signal state_changed(from: int, to: int)
 signal slash_hit(target: Node)
-## 请求震屏（强度约 1–8 像素）
-signal impact(strength: float)
+## 请求震屏（强度约 1–8 像素）；dir 不为零时镜头沿这个方向被推一下
+signal impact(strength: float, dir: Vector2)
 signal died
 signal overclocked
 
@@ -58,6 +58,7 @@ var _squash := Vector2.ONE
 var _prev_vx := 0.0
 var _skid_dust := 0.0
 var _air_hang_used := false
+var _streak_timer := 0.0
 
 # 挥刀层
 var slash_step := -1
@@ -68,6 +69,10 @@ var _slash_dash := false
 var _slash_aim := Vector2.RIGHT
 var _next_step := 0
 var _combo_window := 0.0
+## 命中定格：刀停在命中的那一刻
+var _slash_freeze := 0.0
+## 第三刀之后的后摇，期间不能出刀
+var _slash_lock := 0.0
 
 var _rect: RectangleShape2D
 var _shape: CollisionShape2D
@@ -100,6 +105,9 @@ func reset_at(pos: Vector2) -> void:
 	_set_low(false)
 	slash_step = -1
 	_slash_queued = false
+	_slash_lock = 0.0
+	_slash_freeze = 0.0
+	_combo_window = 0.0
 	_dash_left = 0.0
 	_jump_buffer = 0.0
 	_wall_lock = 0.0
@@ -339,7 +347,8 @@ func _wall_jump(T: Dictionary, wall: int) -> void:
 	_squash = Vector2(0.82, 1.2)
 	_set_state(State.AIR)
 	Fx.dust(fx_parent, global_position + Vector2(wall * 6, -12), float(-wall), 5)
-	Audio.play("walljump", -10.0)
+	Fx.ring(fx_parent, global_position + Vector2(wall * 6, -16), 18.0)
+	Audio.play("walljump", -6.0)
 
 
 func _start_dash(T: Dictionary) -> void:
@@ -367,8 +376,8 @@ func _start_dash(T: Dictionary) -> void:
 	_squash = Vector2(1.25, 0.82)
 	_set_state(State.DASH)
 	Fx.dust(fx_parent, global_position, -d.x, 6)
-	Audio.play("dash", -7.0)
-	impact.emit(1.0)
+	Audio.play("dash", -4.0)
+	impact.emit(1.0, -d)
 
 
 func _end_dash(T: Dictionary) -> void:
@@ -392,7 +401,7 @@ func _start_slide(T: Dictionary) -> void:
 	_set_low(true)
 	_set_state(State.SLIDE)
 	Fx.dust(fx_parent, global_position, float(-dir), 8)
-	Audio.play("slide", -12.0)
+	Audio.play("slide", -4.0)
 
 
 func _end_slide() -> void:
@@ -409,9 +418,9 @@ func _land(vy: float, T: Dictionary) -> void:
 	if hit > 0.25:
 		Fx.dust(fx_parent, global_position, 0.0, 4 + int(hit * 8))
 	if hit > 0.6:
-		Audio.play("land", lerpf(-18.0, -8.0, hit))
+		Audio.play("land", lerpf(-10.0, -2.0, hit))
 	if hit > 0.85:
-		impact.emit(1.5)
+		impact.emit(1.5, Vector2.DOWN)
 	landed.emit(hit)
 	if input.slide_held and absf(velocity.x) > 150.0:
 		_start_slide(T)
@@ -421,16 +430,20 @@ func _land(vy: float, T: Dictionary) -> void:
 
 func _update_slash(delta: float, T: Dictionary) -> void:
 	_combo_window = maxf(_combo_window - delta, 0.0)
-	if input.slash_pressed:
+	_slash_lock = maxf(_slash_lock - delta, 0.0)
+	if input.slash_pressed and _slash_lock <= 0.0:
 		if slash_step < 0:
 			_start_slash(_next_step if _combo_window > 0.0 else 0, T)
 		else:
 			_slash_queued = true
 	if slash_step < 0:
 		return
+	if _slash_freeze > 0.0:
+		_slash_freeze -= delta
+		return
 	_slash_time += delta
 	var dur := slash_duration()
-	if _slash_time <= dur * 0.75:
+	if _slash_time <= T.deflect_window:
 		_try_deflect(T)
 	if not _slash_hit_done and _slash_time >= dur * 0.3:
 		_do_hit(T)
@@ -442,10 +455,12 @@ func _update_slash(delta: float, T: Dictionary) -> void:
 		else:
 			_next_step = (step + 1) % 3
 			_combo_window = 0.0 if step >= 2 else 0.3
+			if step >= 2:
+				_slash_lock = 0.25
 
 
 func slash_duration() -> float:
-	return Tuning.v.slash_duration * (1.35 if slash_step == 2 else 1.0)
+	return Tuning.v.slash_duration * (1.5 if slash_step == 2 else 1.0)
 
 
 func _start_slash(step: int, T: Dictionary) -> void:
@@ -506,13 +521,16 @@ func _do_hit(T: Dictionary) -> void:
 	SlashFx.spawn(fx_parent, origin, base + s.from, base + s.to, facing, 14.0 + reach, heavy)
 	if hit_any:
 		Audio.play("hit_heavy" if heavy else "hit", -2.0)
+		if heavy:
+			Music.duck(6.0, 0.25)
 		# 下劈打中：像踩弹一样弹起来，并恢复空中冲刺
 		if _slash_aim == Vector2.DOWN and state != State.GROUND:
 			velocity.y = -T.jump_velocity * 0.85
 			_air_dashes = int(T.air_dashes)
 			_set_state(State.AIR)
-		impact.emit(6.0 if heavy else 3.5)
+		impact.emit(6.0 if heavy else 3.5, _slash_aim)
 		overclock_charge = 0.0
+		_slash_freeze = 0.08
 		var stop: float = T.hit_stop * (1.7 if heavy else 1.0)
 		if stop > 0.0:
 			TimeFx.hitstop(stop)
@@ -528,7 +546,8 @@ func _try_deflect(T: Dictionary) -> void:
 			b.deflect(self)
 			Fx.sparks(fx_parent, b.global_position, -b.velocity.normalized(), 12, Color(1, 1, 1))
 			Audio.play("deflect", -2.0)
-			impact.emit(4.0)
+			Music.duck(6.0, 0.3)
+			impact.emit(4.0, _slash_aim)
 			TimeFx.hitstop(T.hit_stop * 1.5)
 			_overclock(T)
 
@@ -552,7 +571,7 @@ func _update_gun(delta: float, T: Dictionary) -> void:
 	overclock_charge = 0.0
 	Bullet.fire(fx_parent, muzzle, aim * T.bullet_speed, Bullet.Team.PLAYER, dmg, self)
 	Fx.sparks(fx_parent, muzzle, aim, 5, Bullet.PLAYER_COLOR)
-	Audio.play("shot", -7.0)
+	Audio.play("shot", -3.0)
 	rig.kick()
 	if state == State.GROUND:
 		velocity.x -= aim.x * 40.0
@@ -570,14 +589,38 @@ func invulnerable() -> bool:
 func take_bullet(b: Node) -> bool:
 	var T: Dictionary = Tuning.v
 	if state == State.DASH:
-		if not _perfect_used and T.dash_time - _dash_left <= T.perfect_window:
-			_perfect_used = true
-			_overclock(T)
+		_try_perfect_dodge(T)
 		return false
 	if _iframes > 0.0:
 		return false
 	hurt(b.velocity.normalized(), b.damage)
 	return true
+
+
+## 被冲锋机撞到；冲刺中穿过去则可能触发精准闪避
+func melee_hit(dir: Vector2, dmg: int) -> void:
+	if state == State.DASH:
+		_try_perfect_dodge(Tuning.v)
+		return
+	hurt(dir, dmg)
+
+
+## 冲锋机撞上来时：正面朝着它、在出刀的前 60% 里，就算招架成功
+func parry_ready(enemy_facing: int) -> bool:
+	return slash_step >= 0 and facing == -enemy_facing and _slash_time <= slash_duration() * 0.6
+
+
+## 正面砍中冲锋中的敌人 = 招架
+func parried() -> void:
+	var T: Dictionary = Tuning.v
+	TimeFx.hitstop(T.hit_stop * 2.0)
+	_overclock(T)
+
+
+func _try_perfect_dodge(T: Dictionary) -> void:
+	if not _perfect_used and T.dash_time - _dash_left <= T.perfect_window:
+		_perfect_used = true
+		_overclock(T)
 
 
 func hurt(dir: Vector2, dmg: int) -> void:
@@ -593,7 +636,8 @@ func hurt(dir: Vector2, dmg: int) -> void:
 	_set_state(State.AIR)
 	Fx.sparks(fx_parent, global_position + CHEST, dir, 10, Color(1, 0.4, 0.4))
 	Audio.play("hurt", -3.0)
-	impact.emit(5.0)
+	Music.duck(8.0, 0.4)
+	impact.emit(5.0, dir)
 	TimeFx.hitstop(0.08)
 	if hp <= 0:
 		died.emit()
@@ -602,8 +646,8 @@ func hurt(dir: Vector2, dmg: int) -> void:
 func _overclock(T: Dictionary) -> void:
 	TimeFx.slowmo(T.overclock_time, T.overclock_scale)
 	overclock_charge = 2.5
-	Audio.play("overclock", -4.0)
-	impact.emit(2.0)
+	Audio.play("overclock", -1.0)
+	impact.emit(2.0, Vector2.ZERO)
 	overclocked.emit()
 
 
@@ -642,7 +686,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 			elif ratio > 0.05:
 				mode = "run"
 				var before := _run_phase
-				_run_phase = fmod(_run_phase + absf(velocity.x) * delta / StriderRig.STRIDE, 1.0)
+				_run_phase = fmod(_run_phase + absf(velocity.x) * delta / StriderRig.stride(ratio), 1.0)
 				if (before < 0.5 and _run_phase >= 0.5) or _run_phase < before:
 					_footstep(ratio)
 		State.AIR:
@@ -673,6 +717,12 @@ func _animate(delta: float, T: Dictionary) -> void:
 		trail.add(pts[0], pts[1])
 	# 受伤后无敌期间闪烁
 	rig.visible = _iframes <= 0.0 or int(_iframes * 20.0) % 2 == 0
+	# 高速时身边掠过速度线
+	if absf(velocity.x) > T.run_speed * 0.9 or state == State.DASH:
+		_streak_timer -= delta
+		if _streak_timer <= 0.0:
+			_streak_timer = 0.03
+			Fx.streak(fx_parent, global_position + Vector2(signf(velocity.x) * randf_range(10.0, 60.0), randf_range(-55.0, 4.0)), signf(velocity.x), randf_range(24.0, 56.0))
 	# 超过疾跑速度时留下淡淡的残影
 	if state != State.DASH and absf(velocity.x) > T.run_speed * 1.15:
 		_ghost_timer -= delta

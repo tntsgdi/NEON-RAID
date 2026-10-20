@@ -8,6 +8,8 @@ var _speed: Label
 var _hint: Label
 var _finish: Label
 var _overclock: Label
+var _tip: Label
+var _tip_time := 0.0
 var _hp := 3
 var _max_hp := 3
 var _energy := 8.0
@@ -20,8 +22,14 @@ func _ready() -> void:
 	_section = _label(Vector2(8, 6), 10, HORIZONTAL_ALIGNMENT_LEFT)
 	_time = _label(Vector2(8, 20), 9, HORIZONTAL_ALIGNMENT_LEFT)
 	_speed = _label(Vector2(432, 6), 8, HORIZONTAL_ALIGNMENT_RIGHT)
-	_hint = _label(Vector2(8, 344), 7, HORIZONTAL_ALIGNMENT_LEFT)
+	_hint = _label(Vector2(8, 342), 8, HORIZONTAL_ALIGNMENT_LEFT)
 	_hint.size.x = 624
+	_tip = _label(Vector2(40, 290), 11, HORIZONTAL_ALIGNMENT_CENTER)
+	_tip.size = Vector2(560, 40)
+	_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tip.add_theme_color_override("font_color", Color(0.85, 1.0, 1.0))
+	_tip.add_theme_constant_override("outline_size", 4)
+	_tip.visible = false
 	_finish = _label(Vector2(120, 150), 20, HORIZONTAL_ALIGNMENT_CENTER)
 	_finish.size.x = 400
 	_overclock = _label(Vector2(220, 40), 12, HORIZONTAL_ALIGNMENT_CENTER)
@@ -44,17 +52,33 @@ func _label(pos: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
 	return l
 
 
-func refresh(section_text: String, run_time: float, best: float, speed: float, finished: bool, mode_key: String) -> void:
+func refresh(section_text: String, run_time: float, best: float, speed: float, finished: bool, mode_key: String, debug: bool) -> void:
 	_section.text = section_text
 	_time.text = tr("HUD_TIME") % _fmt(run_time)
-	var right := tr("HUD_SPEED") % int(round(speed)) + "\n" + tr(mode_key)
+	var right := ""
 	if best >= 0.0:
-		right += "\n" + tr("HUD_BEST") % _fmt(best)
+		right = tr("HUD_BEST") % _fmt(best)
+	if debug:
+		right += "\n" + tr("HUD_SPEED") % int(round(speed)) + "\n" + tr(mode_key)
 	_speed.text = right
 	_speed.size.y = 40
 	_hint.text = tr("HUD_HINT")
 	_finish.visible = finished
 	_finish.text = tr("HUD_FINISH") % _fmt(run_time)
+
+
+## 屏幕下方的大字提示，显示几秒后淡出
+func show_tip(text: String) -> void:
+	_tip.text = text
+	_tip.visible = true
+	_tip_time = 4.5
+
+
+func _process(delta: float) -> void:
+	if _tip_time > 0.0:
+		_tip_time -= delta / maxf(Engine.time_scale, 0.0001)
+		_tip.modulate.a = clampf(_tip_time / 0.6, 0.0, 1.0)
+		_tip.visible = _tip_time > 0.0
 
 
 ## 血（青色方块）、射击能量（细条）、神经超频提示

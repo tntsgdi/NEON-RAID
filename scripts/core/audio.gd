@@ -18,6 +18,7 @@ var _next := 0
 func _ready() -> void:
 	for i in 24:
 		var p := AudioStreamPlayer.new()
+		p.bus = &"SFX"
 		add_child(p)
 		_players.append(p)
 	for n in NAMES:

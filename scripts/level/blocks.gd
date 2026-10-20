@@ -5,6 +5,7 @@ const FILL := Color(0.19, 0.23, 0.3)
 const EDGE := Color(0.46, 0.56, 0.7)
 const TOP := Color(0.75, 0.84, 0.95)
 const GRIP := Color(0.36, 0.44, 0.56)
+const TICK := Color(0.3, 0.9, 1.0, 0.35)
 
 
 static func build(parent: Node, rects: Array) -> void:
@@ -25,6 +26,13 @@ static func draw(ci: CanvasItem, rects: Array) -> void:
 		ci.draw_rect(r, FILL)
 		ci.draw_rect(r, EDGE, false, 1.0)
 		ci.draw_line(r.position + Vector2(0, 0.5), Vector2(r.end.x, r.position.y + 0.5), TOP, 2.0)
+		# 地面每 32 像素一道发光刻线：跑起来眼睛有东西可以参照速度
+		if r.size.x > 90.0:
+			var x: float = ceilf(r.position.x / 32.0) * 32.0
+			while x < r.end.x - 2.0:
+				ci.draw_line(Vector2(x, r.position.y + 3), Vector2(x, r.position.y + 9), TICK, 1.0)
+				ci.draw_line(Vector2(x - 6, r.position.y + 3), Vector2(x + 6, r.position.y + 3), Color(TICK, 0.15), 1.0)
+				x += 32.0
 		if r.size.y > 60.0:
 			var y: float = r.position.y + 10.0
 			while y < minf(r.end.y, 0.0) - 6.0:

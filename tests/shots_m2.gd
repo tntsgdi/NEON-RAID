@@ -21,10 +21,11 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	var sheet := Image.create(960 * 2, 540, false, Image.FORMAT_RGBA8)
 
-	# 1：两台安保机在拉瞄准线，玩家朝它们开枪
+	# 1：安保机、三连发机在拉瞄准线，带盾冲锋机在后面，玩家朝它们开枪
 	main.place(Vector2(-300, 0))
 	arena.spawn(Vector2(-120, 0), false, 0.0)
-	arena.spawn(Vector2(-205, -80), false, 0.0)
+	arena.spawn(Vector2(-205, -80), false, 0.0, "burst")
+	arena.spawn(Vector2(60, 0), true, 0.0, "rusher")
 	var inp = load("res://scripts/player/scripted_input.gd").new([{"frames": 1, "move": Vector2(1, 0)}, {"frames": 30, "aim": Vector2(1, -0.1).normalized()}, {"frames": 1, "press": ["shoot"]}, {"frames": 4}, {"frames": 1, "press": ["shoot"]}, {"frames": 9999}])
 	p.input = inp
 	for i in 50:

@@ -33,6 +33,7 @@ func _run() -> void:
 	await _deflect()
 	await _shield()
 	await _launch()
+	await _rusher()
 	await _death()
 	await _waves()
 
@@ -213,6 +214,39 @@ func _launch() -> void:
 			up[0] = true
 	player.input = load("res://scripts/player/player_input.gd").new()
 	_check(up[0], "上挑把敌人打上天")
+
+
+## 冲锋机：站着会被撞掉血；冲刺穿过不掉血；正面一刀招架
+func _rusher() -> void:
+	await _fresh()
+	arena.spawn(Vector2(-200, 0), false, 0.0, "rusher")
+	main.place(Vector2(-300, 0))
+	for f in 240:
+		await physics_frame
+		if player.hp < 3:
+			break
+	_check(player.hp == 2, "站着不动被冲锋机撞掉 1 血（剩 %d）" % player.hp)
+	await _fresh()
+	var r = arena.spawn(Vector2(-200, 0), false, 0.0, "rusher")
+	var log := await _drive(Vector2(-300, 0), [
+		{"until": func(p): return r.state == r.State.CHARGE and absf(r.global_position.x - p.global_position.x) < 40.0, "max": 300},
+		{"frames": 1, "move": R, "press": ["dash"]},
+		{"frames": 40},
+	])
+	_check(log[-1].hp == 3, "冲刺穿过冲锋机不掉血（剩 %d）" % log[-1].hp)
+	await _fresh()
+	r = arena.spawn(Vector2(-200, 0), false, 0.0, "rusher")
+	var oc := [false]
+	var cb := func(): oc[0] = true
+	player.overclocked.connect(cb)
+	log = await _drive(Vector2(-300, 0), [
+		{"frames": 1, "move": R},
+		{"until": func(p): return r.state == r.State.CHARGE and absf(r.global_position.x - p.global_position.x) < 40.0, "max": 300},
+		{"frames": 1, "press": ["slash"]},
+		{"frames": 30},
+	])
+	player.overclocked.disconnect(cb)
+	_check(oc[0] and log[-1].hp == 3, "正面一刀招架冲锋：不掉血并触发神经超频（血 %d）" % log[-1].hp)
 
 
 ## 血打空：很快回到起点，血加满，当前这一波重来

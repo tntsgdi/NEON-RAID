@@ -20,9 +20,12 @@ var finished := false
 var best := -1.0
 var _look := 0.0
 var _shake := 0.0
+## 方向性的镜头冲击（沿挥刀/受击方向推一下再弹回）
+var _kick := Vector2.ZERO
 var _pixel_layer: CanvasLayer
 var _viewport: SubViewport
 var _tint: ColorRect
+var _tips := {}
 
 
 func _ready() -> void:
@@ -55,6 +58,7 @@ func _ready() -> void:
 	player.impact.connect(_on_impact)
 	player.died.connect(_on_player_died, CONNECT_DEFERRED)
 	world.add_child(player)
+	world.add_child(CityBackdrop.make_foreground())
 	camera = Camera2D.new()
 	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	world.add_child(camera)
@@ -146,8 +150,41 @@ func place(pos: Vector2, vel := Vector2.ZERO) -> void:
 	camera.reset_physics_interpolation()
 
 
-func _on_impact(strength: float) -> void:
-	_shake = maxf(_shake, strength * Tuning.v.shake)
+## 第一次遇到某个机制时弹一条大字提示（每次启动游戏各提示一次）
+func _update_tips() -> void:
+	if arena == null:
+		if not _tips.has("TIP_RANGE"):
+			_tip("TIP_RANGE")
+		elif range_ != null and player.global_position.x > 1900.0 and player.global_position.x < 2100.0:
+			_tip("TIP_WALL")
+		return
+	if arena.wave >= 1:
+		_tip("TIP_ARENA")
+	for e in arena.enemies:
+		if not is_instance_valid(e):
+			continue
+		if e.kind == "rusher" and e.state == EnemyBot.State.WINDUP:
+			_tip("TIP_RUSHER")
+		elif e.shielded and e.has_shield() and absf(e.global_position.x - player.global_position.x) < 160.0:
+			_tip("TIP_SHIELD")
+	if TimeFx.slowmo_active():
+		_tip("TIP_OVERCLOCK")
+
+
+func _tip(key: String) -> void:
+	if _tips.has(key):
+		return
+	_tips[key] = true
+	hud.show_tip(tr(key))
+
+
+func _on_impact(strength: float, dir: Vector2) -> void:
+	var s: float = strength * Tuning.v.shake
+	if dir == Vector2.ZERO:
+		_shake = maxf(_shake, s)
+	else:
+		_kick += dir.normalized() * s
+		_shake = maxf(_shake, s * 0.3)
 
 
 ## 血打空：0.3 秒内回检查点（不黑屏不加载），当前这一段重来
@@ -183,10 +220,21 @@ func _process(delta: float) -> void:
 	if player.global_position.y > level.pit_y():
 		place(level.checkpoint_for(player.last_floor_x))
 
+	# 配乐：战斗训练场有敌人时战斗层全开，清场后回落；手感测试场高速跑动时稍微加一点
+	if arena != null:
+		if arena.enemies.is_empty():
+			Music.intensity = 0.3 if arena.cleared else 0.45
+		elif arena.wave >= 3 or arena.enemies.size() >= 3 or player.hp == 1:
+			Music.intensity = 1.0
+		else:
+			Music.intensity = 0.7
+	else:
+		Music.intensity = 0.35 if absf(player.velocity.x) > Tuning.v.run_speed * 0.9 else 0.0
+	_update_tips()
 	var slow := TimeFx.slowmo_active()
 	_tint.color.a = lerpf(_tint.color.a, 0.14 if slow else 0.0, 1.0 - exp(-20.0 * delta / maxf(Engine.time_scale, 0.05)))
 	hud.refresh(level.label(x), run_time, best, player.velocity.length(), finished,
-		"HUD_MODE_PIXEL" if pixel_mode else "HUD_MODE_HD")
+		"HUD_MODE_PIXEL" if pixel_mode else "HUD_MODE_HD", tuning_panel.visible)
 	hud.refresh_combat(player.hp, Player.MAX_HP, player.energy, Tuning.v.gun_energy, player.overclock_charge > 0.0)
 
 
@@ -197,8 +245,13 @@ func _physics_process(delta: float) -> void:
 	var target := player.global_position + Vector2(_look, -40.0)
 	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-12.0 * delta))
 	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-7.0 * delta))
+	# 越快镜头拉得越远，冲刺时再多拉一点
+	var speed_k := clampf(absf(player.velocity.x) / T.run_speed - 0.5, 0.0, 1.0)
+	var want_zoom := 1.0 - 0.06 * speed_k - (0.03 if player.state == Player.State.DASH else 0.0)
+	camera.zoom = Vector2.ONE * lerpf(camera.zoom.x, want_zoom, 1.0 - exp(-4.0 * delta))
+	_kick = _kick.lerp(Vector2.ZERO, 1.0 - exp(-18.0 * delta))
+	var jitter := Vector2.ZERO
 	if _shake > 0.05:
-		camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
+		jitter = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
 		_shake = move_toward(_shake, 0.0, 45.0 * delta)
-	else:
-		camera.offset = Vector2.ZERO
+	camera.offset = jitter + _kick

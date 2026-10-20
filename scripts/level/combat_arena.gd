@@ -12,11 +12,11 @@ const SOLIDS := [
 	Rect2(-70, -160, 140, 12),      # 顶平台
 ]
 const START := Vector2(-370, 0)
-## 每波：[位置, 是否盾兵, 巡逻半径]
+## 每波：[位置, 型号, 是否带盾, 巡逻半径]
 const WAVES := [
-	[[Vector2(180, 0), false, 60.0], [Vector2(320, 0), false, 50.0]],
-	[[Vector2(-205, -80), false, 35.0], [Vector2(205, -80), false, 35.0], [Vector2(300, 0), true, 40.0]],
-	[[Vector2(0, -160), false, 35.0], [Vector2(-250, 0), true, 30.0], [Vector2(250, 0), true, 30.0], [Vector2(205, -80), false, 35.0]],
+	[[Vector2(180, 0), "gunner", false, 60.0], [Vector2(320, 0), "gunner", false, 50.0]],
+	[[Vector2(-205, -80), "gunner", false, 35.0], [Vector2(250, 0), "rusher", false, 40.0], [Vector2(330, 0), "gunner", true, 30.0]],
+	[[Vector2(0, -160), "burst", false, 30.0], [Vector2(-250, 0), "rusher", false, 40.0], [Vector2(250, 0), "gunner", true, 30.0], [Vector2(205, -80), "burst", false, 30.0]],
 ]
 
 var player: Node2D
@@ -74,8 +74,9 @@ func on_player_died() -> void:
 	_pending = 0.8
 
 
-func spawn(pos: Vector2, shielded: bool, patrol: float) -> EnemyBot:
+func spawn(pos: Vector2, shielded: bool, patrol: float, kind := "gunner") -> EnemyBot:
 	var e := EnemyBot.new()
+	e.kind = kind
 	e.position = pos
 	e.shielded = shielded
 	e.patrol_range = patrol
@@ -107,8 +108,8 @@ func _physics_process(delta: float) -> void:
 				cleared = true
 				return
 			for s in WAVES[wave]:
-				spawn(s[0], s[1], s[2])
-			Audio.play("charge", -12.0)
+				spawn(s[0], s[2], s[3], s[1])
+			Audio.play("charge", -8.0)
 			wave += 1
 	else:
 		_pending = 1.0

@@ -57,6 +57,28 @@ static func debris(parent: Node, pos: Vector2, dir: Vector2, amount: int, color:
 	p.emission_rect_extents = Vector2(6, 12)
 
 
+## 冲击环：一圈迅速扩大、变淡的亮环
+static func ring(parent: Node, pos: Vector2, radius: float) -> void:
+	if parent == null:
+		return
+	var r := FxRing.new()
+	r.position = pos
+	r.radius = radius
+	r.z_index = 6
+	parent.add_child(r)
+
+
+## 速度线：留在原地、迅速消失的一道横线（人跑过去就像风从身边掠过）
+static func streak(parent: Node, pos: Vector2, dir_x: float, length: float) -> void:
+	if parent == null:
+		return
+	var s := FxStreak.new()
+	s.position = pos
+	s.length = length * dir_x
+	s.z_index = 7
+	parent.add_child(s)
+
+
 static func _burst(parent: Node, pos: Vector2, amount: int, life: float) -> CPUParticles2D:
 	var p := CPUParticles2D.new()
 	p.one_shot = true
