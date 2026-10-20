@@ -13,6 +13,7 @@ const BLADE := Color(0.82, 1.0, 1.0)
 
 var parts := {}
 var pose := {}
+var _recoil := 0.0
 
 
 func _ready() -> void:
@@ -61,6 +62,7 @@ func _part(parent: Node2D, part_name: String, kind: String, pos: Vector2, length
 
 ## 把当前姿势向目标姿势插值，rate 越大跟得越紧
 func apply(target: Dictionary, delta: float, rate: float) -> void:
+	_recoil = move_toward(_recoil, 0.0, 120.0 * delta)
 	var k := 1.0 - exp(-rate * delta)
 	for j in Poses.JOINTS:
 		var t: float = target.get(j, 0.0)
@@ -86,7 +88,7 @@ func aim_gun(local_aim: Vector2, aim_weight := 0.3) -> void:
 	var ang := rad_to_deg(local_aim.angle())
 	var upper := lerpf(pose.uarm_f, ang - 90.0 - pose.torso, aim_weight)
 	_rot("uarm_f", upper)
-	_rot("farm_f", wrapf(ang - 90.0 - pose.torso - upper, -180.0, 180.0))
+	_rot("farm_f", wrapf(ang - 90.0 - pose.torso - upper, -180.0, 180.0) + _recoil)
 	if local_aim.x > -0.2:
 		_rot("head", clampf(ang * 0.5, -30.0, 25.0) - pose.torso * 0.6)
 
@@ -100,6 +102,17 @@ func swing_blade(local_deg: float) -> void:
 
 func release_blade() -> void:
 	parts.uarm_b.z_index = -2
+
+
+## 开枪后坐力：枪口往上一跳
+func kick() -> void:
+	_recoil = 18.0
+
+
+## 枪口的全局坐标
+func muzzle() -> Vector2:
+	var g: RigPart = parts.gun
+	return g.global_position + g.global_transform.y.normalized() * (g.length + 1.0)
 
 
 ## 刀身根部与刀尖的全局坐标（刀光拖尾用）

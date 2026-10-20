@@ -13,6 +13,7 @@ const KEYS := {
 	"tuning": [KEY_F1],
 	"language": [KEY_F2],
 	"render_mode": [KEY_F3],
+	"switch_level": [KEY_F4],
 }
 
 const MOUSE := {

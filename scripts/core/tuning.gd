@@ -41,6 +41,14 @@ const SPECS := [
 	["hit_stop", 0.06, 0.0, 0.15, 0.005],
 	["shake", 1.0, 0.0, 2.0, 0.05],
 	["camera_look_ahead", 0.35, 0.0, 0.8, 0.01],
+	["gun_cooldown", 0.12, 0.03, 0.5, 0.01],
+	["gun_energy", 8.0, 1.0, 20.0, 1.0],
+	["gun_regen_time", 1.2, 0.2, 4.0, 0.05],
+	["bullet_speed", 900.0, 300.0, 1600.0, 10.0],
+	["iframes", 0.6, 0.0, 2.0, 0.05],
+	["perfect_window", 0.12, 0.0, 0.3, 0.01],
+	["overclock_time", 0.6, 0.1, 2.0, 0.05],
+	["overclock_scale", 0.35, 0.1, 1.0, 0.05],
 ]
 
 var v := {}

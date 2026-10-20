@@ -11,6 +11,7 @@ func poll(body: Node2D) -> void:
 	slide_pressed = Input.is_action_just_pressed("slide")
 	slide_held = Input.is_action_pressed("slide")
 	slash_pressed = Input.is_action_just_pressed("slash")
+	shoot_pressed = Input.is_action_just_pressed("shoot")
 	var to_mouse := body.get_global_mouse_position() - (body.global_position + Player.CHEST)
 	if to_mouse.length() > 4.0:
 		aim = to_mouse.normalized()

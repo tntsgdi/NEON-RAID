@@ -9,6 +9,8 @@ signal state_changed(from: int, to: int)
 signal slash_hit(target: Node)
 ## 请求震屏（强度约 1–8 像素）
 signal impact(strength: float)
+signal died
+signal overclocked
 
 enum State { GROUND, AIR, DASH, SLIDE, WALL }
 const STATE_NAMES := ["ground", "air", "dash", "slide", "wall"]
@@ -16,6 +18,7 @@ const STATE_NAMES := ["ground", "air", "dash", "slide", "wall"]
 const CHEST := Vector2(0, -26)
 const STAND := Vector2(12, 36)
 const LOW := Vector2(12, 16)
+const MAX_HP := 3
 
 var input: PlayerInput = DeviceInput.new()
 var state := State.AIR
@@ -24,6 +27,16 @@ var aim := Vector2.RIGHT
 var fx_parent: Node
 ## 最近一次站在地面上的 x，用于掉坑后回到检查点
 var last_floor_x := 0.0
+var hp := MAX_HP
+var energy := 8.0
+## >0 时下一次命中伤害翻倍（神经超频的奖励）
+var overclock_charge := 0.0
+
+var _iframes := 0.0
+var _shot_cd := 0.0
+var _regen_delay := 0.0
+var _gun_raise := 0.0
+var _perfect_used := false
 
 var _coyote := 0.0
 var _jump_buffer := 0.0
@@ -76,6 +89,7 @@ func _ready() -> void:
 	add_child(rig)
 	if fx_parent == null:
 		fx_parent = get_parent()
+	add_to_group("player")
 	trail = BladeTrail.new()
 	trail.z_index = 5
 	fx_parent.add_child.call_deferred(trail)
@@ -93,6 +107,11 @@ func reset_at(pos: Vector2) -> void:
 	_wall_coyote = 0.0
 	_squash = Vector2.ONE
 	_air_dashes = int(Tuning.v.air_dashes)
+	hp = MAX_HP
+	energy = Tuning.v.gun_energy
+	overclock_charge = 0.0
+	_iframes = 0.0
+	rig.visible = true
 	last_floor_x = pos.x
 	_set_state(State.AIR)
 	reset_physics_interpolation()
@@ -109,6 +128,8 @@ func _physics_process(delta: float) -> void:
 	_wall_coyote = maxf(_wall_coyote - delta, 0.0)
 	_cut_immune = maxf(_cut_immune - delta, 0.0)
 	_land_squash = maxf(_land_squash - delta * 8.0, 0.0)
+	_iframes = maxf(_iframes - delta, 0.0)
+	overclock_charge = maxf(overclock_charge - delta, 0.0)
 	_idle_time += delta
 
 	match state:
@@ -128,6 +149,7 @@ func _physics_process(delta: float) -> void:
 	_ledge_assist()
 	_after_move(vy_before, T)
 	_update_slash(delta, T)
+	_update_gun(delta, T)
 	_update_facing()
 	_animate(delta, T)
 	_prev_vx = velocity.x
@@ -338,6 +360,7 @@ func _start_dash(T: Dictionary) -> void:
 	_dash_left = T.dash_time
 	_dash_cd = T.dash_cooldown
 	_ghost_timer = 0.0
+	_perfect_used = false
 	if d.x != 0.0:
 		facing = int(signf(d.x))
 	if _rect.size == LOW:
@@ -408,6 +431,8 @@ func _update_slash(delta: float, T: Dictionary) -> void:
 		return
 	_slash_time += delta
 	var dur := slash_duration()
+	if _slash_time <= dur * 0.75:
+		_try_deflect(T)
 	if not _slash_hit_done and _slash_time >= dur * 0.3:
 		_do_hit(T)
 	if _slash_time >= dur:
@@ -472,7 +497,8 @@ func _do_hit(T: Dictionary) -> void:
 		var r: Rect2 = n.hurt_rect()
 		var closest := Vector2(clampf(center.x, r.position.x, r.end.x), clampf(center.y, r.position.y, r.end.y))
 		if closest.distance_to(center) <= reach:
-			n.take_hit(_slash_aim, 2 if heavy else 1)
+			var power := (2 if heavy else 1) * (2 if overclock_charge > 0.0 else 1)
+			n.take_hit(_slash_aim, power, "slash")
 			Fx.sparks(fx_parent, closest, _slash_aim, 14 if heavy else 9)
 			slash_hit.emit(n)
 			hit_any = true
@@ -487,10 +513,99 @@ func _do_hit(T: Dictionary) -> void:
 			_air_dashes = int(T.air_dashes)
 			_set_state(State.AIR)
 		impact.emit(6.0 if heavy else 3.5)
+		overclock_charge = 0.0
 		var stop: float = T.hit_stop * (1.7 if heavy else 1.0)
 		if stop > 0.0:
-			Engine.time_scale = 0.03
-			get_tree().create_timer(stop, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
+			TimeFx.hitstop(stop)
+
+
+## 刀碰到敌弹就弹回去（弹回的子弹一发打死射手），同时触发神经超频
+func _try_deflect(T: Dictionary) -> void:
+	var origin := global_position + CHEST
+	var center := origin + _slash_aim * 14.0
+	var reach := 26.0 + (8.0 if _slash_dash else 0.0)
+	for b in get_tree().get_nodes_in_group("enemy_bullets"):
+		if b.global_position.distance_to(center) <= reach:
+			b.deflect(self)
+			Fx.sparks(fx_parent, b.global_position, -b.velocity.normalized(), 12, Color(1, 1, 1))
+			Audio.play("deflect", -2.0)
+			impact.emit(4.0)
+			TimeFx.hitstop(T.hit_stop * 1.5)
+			_overclock(T)
+
+
+# ---------------------------------------------------------------- 射击与受伤
+
+func _update_gun(delta: float, T: Dictionary) -> void:
+	_shot_cd = maxf(_shot_cd - delta, 0.0)
+	_gun_raise = maxf(_gun_raise - delta, 0.0)
+	_regen_delay = maxf(_regen_delay - delta, 0.0)
+	if _regen_delay <= 0.0:
+		energy = minf(energy + T.gun_energy / T.gun_regen_time * delta, T.gun_energy)
+	if not input.shoot_pressed or _shot_cd > 0.0 or energy < 1.0:
+		return
+	energy -= 1.0
+	_shot_cd = T.gun_cooldown
+	_regen_delay = 0.35
+	_gun_raise = 0.3
+	var muzzle := rig.muzzle()
+	var dmg := 2 if overclock_charge > 0.0 else 1
+	overclock_charge = 0.0
+	Bullet.fire(fx_parent, muzzle, aim * T.bullet_speed, Bullet.Team.PLAYER, dmg, self)
+	Fx.sparks(fx_parent, muzzle, aim, 5, Bullet.PLAYER_COLOR)
+	Audio.play("shot", -7.0)
+	rig.kick()
+	if state == State.GROUND:
+		velocity.x -= aim.x * 40.0
+
+
+func hurt_rect() -> Rect2:
+	return Rect2(global_position + Vector2(-_rect.size.x * 0.5, -_rect.size.y), _rect.size)
+
+
+func invulnerable() -> bool:
+	return state == State.DASH or _iframes > 0.0
+
+
+## 敌弹碰到机体时调用；返回 true 表示吃下这发（子弹消失）
+func take_bullet(b: Node) -> bool:
+	var T: Dictionary = Tuning.v
+	if state == State.DASH:
+		if not _perfect_used and T.dash_time - _dash_left <= T.perfect_window:
+			_perfect_used = true
+			_overclock(T)
+		return false
+	if _iframes > 0.0:
+		return false
+	hurt(b.velocity.normalized(), b.damage)
+	return true
+
+
+func hurt(dir: Vector2, dmg: int) -> void:
+	if invulnerable() or hp <= 0:
+		return
+	var T: Dictionary = Tuning.v
+	hp -= dmg
+	_iframes = T.iframes
+	slash_step = -1
+	if _rect.size == LOW and not _ceiling_blocked():
+		_set_low(false)
+	velocity = Vector2((signf(dir.x) if absf(dir.x) > 0.1 else -facing) * 220.0, -200.0)
+	_set_state(State.AIR)
+	Fx.sparks(fx_parent, global_position + CHEST, dir, 10, Color(1, 0.4, 0.4))
+	Audio.play("hurt", -3.0)
+	impact.emit(5.0)
+	TimeFx.hitstop(0.08)
+	if hp <= 0:
+		died.emit()
+
+
+func _overclock(T: Dictionary) -> void:
+	TimeFx.slowmo(T.overclock_time, T.overclock_scale)
+	overclock_charge = 2.5
+	Audio.play("overclock", -4.0)
+	impact.emit(2.0)
+	overclocked.emit()
 
 
 # ---------------------------------------------------------------- 表现
@@ -555,7 +670,9 @@ func _animate(delta: float, T: Dictionary) -> void:
 		target = target.duplicate()
 		target.hip_y += _land_squash * 6.0
 	rig.apply(target, delta, rate)
-	rig.aim_gun(Vector2(aim.x * facing, aim.y))
+	rig.aim_gun(Vector2(aim.x * facing, aim.y), 1.0 if _gun_raise > 0.0 else 0.3)
+	# 受伤后无敌期间闪烁
+	rig.visible = _iframes <= 0.0 or int(_iframes * 20.0) % 2 == 0
 	if slash_step >= 0:
 		var s: Dictionary = Poses.SLASH[slash_step]
 		var t := clampf(_slash_time / slash_duration(), 0.0, 1.0)
@@ -566,7 +683,7 @@ func _animate(delta: float, T: Dictionary) -> void:
 		trail.add(pts[0], pts[1])
 	else:
 		rig.release_blade()
-	rig.set_glow(1.0 if state == State.DASH else 0.0)
+	rig.set_glow(1.0 if state == State.DASH or overclock_charge > 0.0 else 0.0)
 	# 超过疾跑速度时留下淡淡的残影
 	if state != State.DASH and absf(velocity.x) > T.run_speed * 1.15:
 		_ghost_timer -= delta

@@ -12,6 +12,7 @@ var dash_pressed := false
 var slide_pressed := false
 var slide_held := false
 var slash_pressed := false
+var shoot_pressed := false
 
 
 func poll(_body: Node2D) -> void:

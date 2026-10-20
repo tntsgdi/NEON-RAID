@@ -14,8 +14,8 @@ const STRINGS := {
 	"HUD_SPEED": ["速度 %d", "SPEED %d"],
 	"HUD_FINISH": ["完成  %s", "CLEAR  %s"],
 	"HUD_HINT": [
-		"A/D 移动   空格 跳（贴墙按住朝墙连按 = 爬墙）   Shift 冲刺   C 滑铲   右键 挥刀（按住 W 上挑 / 空中按住 S 下劈）   R 重来   F1 调参   F2 English   F3 像素/高清",
-		"A/D MOVE   SPACE JUMP (hold toward wall + tap = climb)   SHIFT DASH   C SLIDE   RMB SLASH (hold W up / S down in air)   R RESTART   F1 TUNING   F2 中文   F3 PIXEL/HD",
+		"A/D 移动   空格 跳（贴墙按住朝墙连按 = 爬墙）   Shift 冲刺   C 滑铲   左键 射击   右键 挥刀（按住 W 上挑 / 空中按住 S 下劈）   R 重来   F1 调参   F2 English   F3 像素/高清   F4 切换场地",
+		"A/D MOVE   SPACE JUMP (hold toward wall + tap = climb)   SHIFT DASH   C SLIDE   LMB SHOOT   RMB SLASH (hold W up / S down in air)   R RESTART   F1 TUNING   F2 中文   F3 PIXEL/HD   F4 SWITCH LEVEL",
 	],
 	"HUD_MODE_HD": ["高清渲染", "HD render"],
 	"HUD_MODE_PIXEL": ["像素渲染 640×360", "Pixel render 640x360"],
@@ -58,6 +58,17 @@ const STRINGS := {
 	"TUNE_shake": ["震屏强度", "Screen shake"],
 	"TUNE_slash_duration": ["挥刀时长", "Slash duration"],
 	"TUNE_hit_stop": ["命中停顿", "Hit stop"],
+	"TUNE_gun_cooldown": ["射击间隔", "Shot cooldown"],
+	"TUNE_gun_energy": ["能量格数", "Gun energy cells"],
+	"TUNE_gun_regen_time": ["能量回满(秒)", "Energy refill time"],
+	"TUNE_bullet_speed": ["子弹速度", "Bullet speed"],
+	"TUNE_iframes": ["受伤无敌时间", "Hurt i-frames"],
+	"TUNE_perfect_window": ["精准闪避窗口", "Perfect dodge window"],
+	"TUNE_overclock_time": ["超频慢动作时长", "Overclock duration"],
+	"TUNE_overclock_scale": ["超频时间流速", "Overclock time scale"],
+	"ARENA_WAVE": ["战斗训练场 · 第 %d/%d 波", "COMBAT ARENA · WAVE %d/%d"],
+	"ARENA_CLEAR": ["训练完成", "ARENA CLEAR"],
+	"HUD_OVERCLOCK": ["神经超频", "OVERCLOCK"],
 	"TUNE_camera_look_ahead": ["镜头前瞻", "Camera look-ahead"],
 }
 

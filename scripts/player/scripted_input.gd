@@ -19,6 +19,7 @@ func poll(body: Node2D) -> void:
 	dash_pressed = false
 	slide_pressed = false
 	slash_pressed = false
+	shoot_pressed = false
 	while _step < steps.size():
 		var cur: Dictionary = steps[_step]
 		var finished := false
@@ -48,6 +49,7 @@ func poll(body: Node2D) -> void:
 		dash_pressed = "dash" in press
 		slide_pressed = "slide" in press
 		slash_pressed = "slash" in press
+		shoot_pressed = "shoot" in press
 		jump_held = jump_held or jump_pressed
 		slide_held = slide_held or slide_pressed
 	_frame += 1

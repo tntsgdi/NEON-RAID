@@ -1,10 +1,13 @@
 extends Node
-## M1 灰盒手感测试场。
+## 灰盒测试：F4 在「手感测试场」（M1）和「战斗训练场」（M2）之间切换。
 ## 镜头视野按 640×360 设计。默认高清平滑渲染（四肢转动、高速移动不闪锯齿）；
 ## F3 切到 640×360 像素渲染（整数倍放大）对比。界面始终在最上层清晰绘制。
 
 var world: Node2D
+var level: Node2D
+## 当前是手感测试场时指向它（测试用），否则为 null
 var range_: TestRange
+var arena: CombatArena
 var player: Player
 var camera: Camera2D
 var hud: Hud
@@ -19,6 +22,7 @@ var _look := 0.0
 var _shake := 0.0
 var _pixel_layer: CanvasLayer
 var _viewport: SubViewport
+var _tint: ColorRect
 
 
 func _ready() -> void:
@@ -46,18 +50,13 @@ func _ready() -> void:
 	world.name = "World"
 	add_child(world)
 	world.add_child(CityBackdrop.make())
-	range_ = TestRange.new()
-	world.add_child(range_)
 	player = Player.new()
 	player.fx_parent = world
 	player.impact.connect(_on_impact)
+	player.died.connect(_on_player_died, CONNECT_DEFERRED)
 	world.add_child(player)
 	camera = Camera2D.new()
 	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
-	camera.limit_left = -200
-	camera.limit_right = 3500
-	camera.limit_top = -700
-	camera.limit_bottom = 120
 	world.add_child(camera)
 
 	var ui_layer := CanvasLayer.new()
@@ -68,12 +67,18 @@ func _ready() -> void:
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.theme = theme
 	ui_layer.add_child(ui)
+	# 神经超频时画面泛青
+	_tint = ColorRect.new()
+	_tint.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tint.color = Color(0.2, 0.9, 1.0, 0.0)
+	ui.add_child(_tint)
 	hud = Hud.new()
 	ui.add_child(hud)
 	tuning_panel = TuningPanel.new()
 	tuning_panel.visible = false
 	ui.add_child(tuning_panel)
-	restart()
+	load_level("range")
 
 
 func _make_theme() -> Theme:
@@ -86,6 +91,31 @@ func _make_theme() -> Theme:
 	return t
 
 
+## kind："range"（手感测试场）或 "arena"（战斗训练场）
+func load_level(kind: String) -> void:
+	if level != null:
+		world.remove_child(level)
+		level.queue_free()
+	range_ = null
+	arena = null
+	if kind == "arena":
+		arena = CombatArena.new()
+		arena.player = player
+		level = arena
+	else:
+		range_ = TestRange.new()
+		level = range_
+	world.add_child(level)
+	world.move_child(level, 1)  # 在远景之上、机体之下
+	var lim: Rect2 = level.limits()
+	camera.limit_left = int(lim.position.x)
+	camera.limit_top = int(lim.position.y)
+	camera.limit_right = int(lim.end.x)
+	camera.limit_bottom = int(lim.end.y)
+	best = -1.0
+	restart()
+
+
 func set_pixel_mode(on: bool) -> void:
 	pixel_mode = on
 	_pixel_layer.visible = on
@@ -96,7 +126,11 @@ func set_pixel_mode(on: bool) -> void:
 
 
 func restart() -> void:
-	place(TestRange.START)
+	TimeFx.reset()
+	for b in get_tree().get_nodes_in_group("enemy_bullets") + get_tree().get_nodes_in_group("player_bullets"):
+		b.queue_free()
+	level.reset()
+	place(level.start_pos())
 	run_time = 0.0
 	running = false
 	finished = false
@@ -116,6 +150,15 @@ func _on_impact(strength: float) -> void:
 	_shake = maxf(_shake, strength * Tuning.v.shake)
 
 
+## 血打空：0.3 秒内回检查点（不黑屏不加载），当前这一段重来
+func _on_player_died() -> void:
+	TimeFx.reset()
+	level.on_player_died()
+	for b in get_tree().get_nodes_in_group("enemy_bullets"):
+		b.queue_free()
+	get_tree().create_timer(0.25, true, false, true).timeout.connect(func(): place(level.checkpoint_for(player.last_floor_x)))
+
+
 func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("restart"):
 		restart()
@@ -125,21 +168,26 @@ func _process(delta: float) -> void:
 		I18n.toggle()
 	if Input.is_action_just_pressed("render_mode"):
 		set_pixel_mode(not pixel_mode)
+	if Input.is_action_just_pressed("switch_level"):
+		load_level("range" if arena != null else "arena")
 
 	var x := player.global_position.x
-	if not running and not finished and x > TestRange.START.x + 30.0:
+	if not running and not finished and level.timer_started(player):
 		running = true
 	if running:
 		run_time += delta
-		if x >= TestRange.FINISH_X:
+		if level.is_finished(player):
 			running = false
 			finished = true
 			best = run_time if best < 0.0 else minf(best, run_time)
-	if player.global_position.y > TestRange.PIT_Y:
-		place(range_.checkpoint_for(player.last_floor_x))
+	if player.global_position.y > level.pit_y():
+		place(level.checkpoint_for(player.last_floor_x))
 
-	hud.refresh(range_.section_key(x), run_time, best, player.velocity.length(), finished,
+	var slow := TimeFx.slowmo_active()
+	_tint.color.a = lerpf(_tint.color.a, 0.14 if slow else 0.0, 1.0 - exp(-20.0 * delta / maxf(Engine.time_scale, 0.05)))
+	hud.refresh(level.label(x), run_time, best, player.velocity.length(), finished,
 		"HUD_MODE_PIXEL" if pixel_mode else "HUD_MODE_HD")
+	hud.refresh_combat(player.hp, Player.MAX_HP, player.energy, Tuning.v.gun_energy, player.overclock_charge > 0.0)
 
 
 ## 镜头在物理帧里移动，和机体一起被物理插值，任何刷新率下都平滑

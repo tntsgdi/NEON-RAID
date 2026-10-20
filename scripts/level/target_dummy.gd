@@ -40,9 +40,10 @@ func center() -> Vector2:
 	return hurt_rect().get_center()
 
 
-func take_hit(dir: Vector2, power: int) -> void:
+## 返回 0 = 没打到，1 = 打到
+func take_hit(dir: Vector2, power: int, _kind := "slash") -> int:
 	if not alive():
-		return
+		return 0
 	hits += 1
 	hp -= power
 	_flash = 0.08
@@ -51,6 +52,7 @@ func take_hit(dir: Vector2, power: int) -> void:
 	_tilt_v += sx * (9.0 + 6.0 * power)
 	if hp <= 0:
 		_break(dir)
+	return 1
 
 
 func _break(dir: Vector2) -> void:

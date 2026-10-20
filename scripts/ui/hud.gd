@@ -7,6 +7,11 @@ var _time: Label
 var _speed: Label
 var _hint: Label
 var _finish: Label
+var _overclock: Label
+var _hp := 3
+var _max_hp := 3
+var _energy := 8.0
+var _max_energy := 8.0
 
 
 func _ready() -> void:
@@ -19,6 +24,9 @@ func _ready() -> void:
 	_hint.size.x = 624
 	_finish = _label(Vector2(120, 150), 20, HORIZONTAL_ALIGNMENT_CENTER)
 	_finish.size.x = 400
+	_overclock = _label(Vector2(220, 40), 12, HORIZONTAL_ALIGNMENT_CENTER)
+	_overclock.size.x = 200
+	_overclock.add_theme_color_override("font_color", Color(0.6, 1.0, 1.0))
 
 
 func _label(pos: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
@@ -36,8 +44,8 @@ func _label(pos: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
 	return l
 
 
-func refresh(section_key: String, run_time: float, best: float, speed: float, finished: bool, mode_key: String) -> void:
-	_section.text = tr(section_key)
+func refresh(section_text: String, run_time: float, best: float, speed: float, finished: bool, mode_key: String) -> void:
+	_section.text = section_text
 	_time.text = tr("HUD_TIME") % _fmt(run_time)
 	var right := tr("HUD_SPEED") % int(round(speed)) + "\n" + tr(mode_key)
 	if best >= 0.0:
@@ -47,6 +55,31 @@ func refresh(section_key: String, run_time: float, best: float, speed: float, fi
 	_hint.text = tr("HUD_HINT")
 	_finish.visible = finished
 	_finish.text = tr("HUD_FINISH") % _fmt(run_time)
+
+
+## 血（青色方块）、射击能量（细条）、神经超频提示
+func refresh_combat(hp: int, max_hp: int, energy: float, max_energy: float, overclock: bool) -> void:
+	_overclock.visible = overclock
+	_overclock.text = tr("HUD_OVERCLOCK")
+	if hp != _hp or max_hp != _max_hp or not is_equal_approx(energy, _energy) or not is_equal_approx(max_energy, _max_energy):
+		_hp = hp
+		_max_hp = max_hp
+		_energy = energy
+		_max_energy = max_energy
+		queue_redraw()
+
+
+func _draw() -> void:
+	for i in _max_hp:
+		var r := Rect2(8 + i * 11, 36, 9, 9)
+		draw_rect(r, Color(0.3, 1.0, 1.0) if i < _hp else Color(0.1, 0.18, 0.22))
+		draw_rect(r, Color(0.6, 0.9, 1.0), false, 1.0)
+	var cells := int(_max_energy)
+	for i in cells:
+		var fill := clampf(_energy - i, 0.0, 1.0)
+		var r := Rect2(8 + i * 5, 49, 4, 3)
+		draw_rect(r, Color(0.12, 0.2, 0.25))
+		draw_rect(Rect2(r.position, Vector2(r.size.x * fill, r.size.y)), Color(0.4, 0.95, 1.0) if fill >= 1.0 else Color(0.25, 0.6, 0.7))
 
 
 static func _fmt(t: float) -> String:
