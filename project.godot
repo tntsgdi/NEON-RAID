@@ -7,10 +7,12 @@ config_version=5
 config/name="霓虹行者 NEON RAID"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://icon.svg"
 
 [autoload]
 
 Tuning="*res://scripts/core/tuning.gd"
+Settings="*res://scripts/core/settings.gd"
 I18n="*res://scripts/core/i18n.gd"
 Audio="*res://scripts/core/audio.gd"
 TimeFx="*res://scripts/core/time_fx.gd"
@@ -33,12 +35,14 @@ rendering/root_node_layout_direction=1
 
 [physics]
 
+3d/physics_engine="Jolt Physics"
 common/physics_ticks_per_second=120
 common/physics_interpolation=true
 common/max_physics_steps_per_frame=16
 
 [rendering]
 
+rendering_device/driver.windows="d3d12"
 renderer/rendering_method="forward_plus"
 renderer/rendering_method.mobile="gl_compatibility"
 renderer/rendering_method.web="gl_compatibility"
