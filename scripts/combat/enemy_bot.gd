@@ -295,6 +295,11 @@ func _draw() -> void:
 		lean = 0.25 * facing
 	elif state == State.CHARGE:
 		lean = 0.35 * facing
+	# 湿地面倒影：站在地上时，脚下一个翻转压扁的暗红剪影
+	if is_on_floor():
+		draw_set_transform(Vector2(0, 1), 0.0, Vector2(1.0, -0.5))
+		draw_rect(Rect2(-7, -30, 14, 30), Color(1.0, 0.2, 0.25, 0.12))
+		draw_rect(Rect2(-1, -24, 5, 2), Color(1.6, 0.3, 0.35, 0.25))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(s, s))
 	# 腿：两节，走路时交替
 	var step := sin(_walk_phase) * 3.0 if state in [State.PATROL, State.CHARGE] else 0.0

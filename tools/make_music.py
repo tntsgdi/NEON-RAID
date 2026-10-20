@@ -368,10 +368,13 @@ def peak():
                 tr.place(tom(m), t0 + 3 * BEAT + s * BEAT / 4, 0.45, -0.5 + s * 0.3)
     for phrase in range(BARS // 4):
         sec = SECTIONS[phrase // 4]
-        if sec not in "BC":
+        if sec == "A":
             continue
+        # 回落段 D：主旋律低一个八度、音量减半地回来，终段不会突然变空
+        shift = -12 if sec == "D" else 0
+        gain = 0.12 if sec == "D" else 0.24 * LEVEL[sec]
         for at, m, length in motif_notes(phrase * 4):
-            lead.place(lead_note(m, length * BEAT), at, 0.24 * LEVEL[sec])
+            lead.place(lead_note(m + shift, length * BEAT), at, gain)
     lL, lR = delay(lead.L, lead.R, 0.75, 0.35, 0.5)
     tr.L += lL
     tr.R += lR
@@ -427,8 +430,15 @@ def sting_clear():
     return tr
 
 
-def write(name, tr, peak_level=0.89):
+def mid_boost(x, gain=0.6):
+    """800 Hz–3 kHz 提升约 4 dB：小喇叭上也听得清旋律和琶音。"""
+    return x + sosfilt(butter(2, [800, 3000], "band", fs=SR, output="sos"), x) * gain
+
+
+def write(name, tr, peak_level=0.89, boost=False):
     L, R = tr.L, tr.R
+    if boost:
+        L, R = mid_boost(L), mid_boost(R)
     m = max(np.abs(L).max(), np.abs(R).max(), 1e-6)
     L, R = np.tanh(L / m * 1.1) * peak_level, np.tanh(R / m * 1.1) * peak_level
     data = (np.stack([L, R], axis=1) * 32767).astype(np.int16)
@@ -446,8 +456,8 @@ def write(name, tr, peak_level=0.89):
 
 
 if __name__ == "__main__":
-    write("explore", explore(), 0.8)
-    write("combat", combat())
+    write("explore", explore(), 0.8, True)
+    write("combat", combat(), 0.89, True)
     write("peak", peak(), 0.75)
     write("sting_wave", sting_wave(), 0.85)
     write("sting_clear", sting_clear(), 0.8)

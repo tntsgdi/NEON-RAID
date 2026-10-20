@@ -31,6 +31,11 @@ var _ca := 0.0
 var _shock_t := 1.0
 var _rain: CPUParticles2D
 var _splash: CPUParticles2D
+var _env: Environment
+var settings_panel: SettingsPanel
+## 本局技巧统计（评级用）
+var stats := {"hits": 0, "deflect": 0, "parry": 0, "perfect_dodge": 0}
+var _last_hp := 3
 var _foreground: Node2D
 
 
@@ -65,6 +70,7 @@ func _ready() -> void:
 	player = Player.new()
 	player.fx_parent = world
 	player.impact.connect(_on_impact)
+	player.skill.connect(func(kind): stats[kind] += 1)
 	player.died.connect(_on_player_died, CONNECT_DEFERRED)
 	world.add_child(player)
 	_rain = _make_rain()
@@ -114,6 +120,11 @@ func _ready() -> void:
 	tuning_panel = TuningPanel.new()
 	tuning_panel.visible = false
 	ui.add_child(tuning_panel)
+	settings_panel = SettingsPanel.new()
+	settings_panel.visible = false
+	ui.add_child(settings_panel)
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	world.process_mode = Node.PROCESS_MODE_PAUSABLE
 	load_level("range")
 
 
@@ -133,6 +144,7 @@ func _setup_glow() -> void:
 		e.set_glow_level(lv, lv in [2, 3, 4])
 	env.environment = e
 	add_child(env)
+	_env = e
 
 
 ## 雨：落在机体身后，跟着镜头走（粒子留在世界坐标里）
@@ -212,6 +224,8 @@ func load_level(kind: String) -> void:
 	if kind == "arena":
 		arena = CombatArena.new()
 		arena.player = player
+		arena.training_clear.connect(_on_training_clear)
+		arena.survival_over.connect(func(w): hud.show_card(tr("SURV_OVER") % [w, arena.best_survival], ""))
 		level = arena
 	else:
 		range_ = TestRange.new()
@@ -245,6 +259,9 @@ func restart() -> void:
 	run_time = 0.0
 	running = false
 	finished = false
+	for k in stats:
+		stats[k] = 0
+	_last_hp = player.hp
 
 
 ## 把机体放到某处并让镜头立刻跟上（测试也用它）
@@ -286,7 +303,7 @@ func _tip(key: String) -> void:
 
 
 func _on_impact(strength: float, dir: Vector2) -> void:
-	var s: float = strength * Tuning.v.shake
+	var s: float = strength * Tuning.v.shake * Settings.v.shake
 	if strength >= 5.0:
 		aberrate(strength * 0.9)
 	if dir == Vector2.ZERO:
@@ -305,7 +322,23 @@ func _on_player_died() -> void:
 	get_tree().create_timer(0.25, true, false, true).timeout.connect(func(): place(level.checkpoint_for(player.last_floor_x)))
 
 
+## 训练三波打完：弹评级卡，然后进入生存模式
+func _on_training_clear() -> void:
+	var score: float = 1000.0 - run_time * 6.0 - stats.hits * 150.0 + stats.deflect * 80.0 + stats.parry * 100.0 + stats.perfect_dodge * 60.0
+	var grade := "S" if score >= 950.0 else ("A" if score >= 750.0 else ("B" if score >= 500.0 else "C"))
+	hud.show_card(tr("RATE_TITLE") % grade, tr("RATE_BODY") % [Hud._fmt(run_time), stats.hits, stats.deflect, stats.parry, stats.perfect_dodge])
+	arena.start_survival()
+
+
 func _process(delta: float) -> void:
+	if Input.is_action_just_pressed("settings"):
+		settings_panel.visible = not settings_panel.visible
+		get_tree().paused = settings_panel.visible
+	if get_tree().paused:
+		return
+	if player.hp < _last_hp:
+		stats.hits += _last_hp - player.hp
+	_last_hp = player.hp
 	if Input.is_action_just_pressed("restart"):
 		restart()
 	if Input.is_action_just_pressed("tuning"):
@@ -344,7 +377,10 @@ func _process(delta: float) -> void:
 	var real := delta / maxf(Engine.time_scale, 0.0001)
 	_ca = move_toward(_ca, 2.5 if TimeFx.slowmo_active() else 0.0, real * 30.0)
 	_shock_t = minf(_shock_t + real * 2.2, 1.0)
-	_post.set_shader_parameter("ca", _ca * Tuning.v.aberration)
+	_post.set_shader_parameter("ca", _ca * Settings.v.aberration)
+	_env.glow_intensity = 0.42 * Settings.v.glow
+	_rain.emitting = Settings.v.rain > 0.5
+	_splash.emitting = Settings.v.rain > 0.5
 	_post.set_shader_parameter("shock_t", _shock_t)
 	var vp := get_viewport().get_visible_rect().size
 	_post.set_shader_parameter("aspect", vp.x / maxf(vp.y, 1.0))

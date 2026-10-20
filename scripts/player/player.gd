@@ -11,6 +11,8 @@ signal slash_hit(target: Node)
 signal impact(strength: float, dir: Vector2)
 signal died
 signal overclocked
+## 技巧统计（评级用）：kind = "deflect" / "parry" / "perfect_dodge"
+signal skill(kind: String)
 
 enum State { GROUND, AIR, DASH, SLIDE, WALL }
 const STATE_NAMES := ["ground", "air", "dash", "slide", "wall"]
@@ -270,6 +272,7 @@ func _slide(delta: float, T: Dictionary) -> void:
 	if _jump_buffer > 0.0:
 		_end_slide()
 		_jump(T)
+		velocity.x *= 1.1  # 滑铲接跳：多出 10% 速度，练熟了能一路保持
 		return
 	if input.dash_pressed and _dash_cd <= 0.0:
 		_end_slide()
@@ -550,6 +553,7 @@ func _try_deflect(T: Dictionary) -> void:
 			Audio.play("deflect", -2.0)
 			Music.duck(6.0, 0.3)
 			get_tree().call_group("game", "shockwave", b.global_position)
+			skill.emit("deflect")
 			impact.emit(4.0, _slash_aim)
 			TimeFx.hitstop(T.hit_stop * 1.5)
 			_overclock(T)
@@ -621,6 +625,7 @@ func parry_ready(enemy_facing: int) -> bool:
 
 ## 正面砍中冲锋中的敌人 = 招架
 func parried() -> void:
+	skill.emit("parry")
 	var T: Dictionary = Tuning.v
 	TimeFx.hitstop(T.hit_stop * 2.0)
 	_overclock(T)
@@ -629,6 +634,7 @@ func parried() -> void:
 func _try_perfect_dodge(T: Dictionary) -> void:
 	if not _perfect_used and T.dash_time - _dash_left <= T.perfect_window:
 		_perfect_used = true
+		skill.emit("perfect_dodge")
 		_overclock(T)
 
 

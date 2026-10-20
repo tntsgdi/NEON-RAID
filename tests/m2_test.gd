@@ -282,6 +282,18 @@ func _waves() -> void:
 		if arena.cleared:
 			break
 	_check(max_wave == 3 and arena.cleared, "三波依次刷出，清完算训练完成（到第 %d 波，完成=%s）" % [max_wave, str(arena.cleared)])
+	# 训练完成后进入生存模式，第 4 波会刷出来
+	for f in 600:
+		await physics_frame
+		if arena.wave >= 4:
+			break
+	_check(arena.survival and arena.wave >= 4 and not arena.enemies.is_empty(), "训练完成后进入生存模式并刷出第 4 波（第 %d 波）" % arena.wave)
+	# 生存模式里死亡：这一局结束，回到训练第 1 波
+	player.hp = 1
+	player.hurt(Vector2.RIGHT, 1)
+	for f in 60:
+		await physics_frame
+	_check(not arena.survival and arena.wave <= 1, "生存模式死亡后回到训练开头（第 %d 波）" % arena.wave)
 
 
 func _check(ok: bool, what: String) -> void:

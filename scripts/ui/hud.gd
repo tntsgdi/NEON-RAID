@@ -10,6 +10,9 @@ var _finish: Label
 var _overclock: Label
 var _tip: Label
 var _tip_time := 0.0
+var _card: Label
+var _card_body: Label
+var _card_time := 0.0
 var _hp := 3
 var _max_hp := 3
 var _energy := 8.0
@@ -30,6 +33,13 @@ func _ready() -> void:
 	_tip.add_theme_color_override("font_color", Color(0.85, 1.0, 1.0))
 	_tip.add_theme_constant_override("outline_size", 4)
 	_tip.visible = false
+	_card = _label(Vector2(70, 110), 20, HORIZONTAL_ALIGNMENT_CENTER)
+	_card.size.x = 500
+	_card.add_theme_color_override("font_color", Color(0.85, 1.0, 1.0))
+	_card_body = _label(Vector2(70, 142), 9, HORIZONTAL_ALIGNMENT_CENTER)
+	_card_body.size = Vector2(500, 40)
+	_card.visible = false
+	_card_body.visible = false
 	_finish = _label(Vector2(120, 150), 20, HORIZONTAL_ALIGNMENT_CENTER)
 	_finish.size.x = 400
 	_overclock = _label(Vector2(220, 40), 12, HORIZONTAL_ALIGNMENT_CENTER)
@@ -63,7 +73,7 @@ func refresh(section_text: String, run_time: float, best: float, speed: float, f
 	_speed.text = right
 	_speed.size.y = 40
 	_hint.text = tr("HUD_HINT")
-	_finish.visible = finished
+	_finish.visible = finished and _card_time <= 0.0 and section_text == tr("SEC_7")
 	_finish.text = tr("HUD_FINISH") % _fmt(run_time)
 
 
@@ -74,7 +84,23 @@ func show_tip(text: String) -> void:
 	_tip_time = 4.5
 
 
+## 屏幕中央的结算卡（评级、生存结果），几秒后淡出
+func show_card(title: String, body: String) -> void:
+	_card.text = title
+	_card_body.text = body
+	_card.visible = true
+	_card_body.visible = true
+	_card_time = 5.0
+
+
 func _process(delta: float) -> void:
+	if _card_time > 0.0:
+		_card_time -= delta / maxf(Engine.time_scale, 0.0001)
+		var a := clampf(_card_time / 0.8, 0.0, 1.0)
+		_card.modulate.a = a
+		_card_body.modulate.a = a
+		_card.visible = _card_time > 0.0
+		_card_body.visible = _card.visible
 	if _tip_time > 0.0:
 		_tip_time -= delta / maxf(Engine.time_scale, 0.0001)
 		_tip.modulate.a = clampf(_tip_time / 0.6, 0.0, 1.0)
