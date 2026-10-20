@@ -16,4 +16,6 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var k := _t / 0.2
-	draw_arc(Vector2.ZERO, radius * (0.3 + 0.7 * k), 0.0, TAU, 24, Color(0.8, 2.0, 2.3, 1.0 - k), 2.0 * (1.0 - k) + 0.5, true)
+	PixelFx.ring(self, Vector2.ZERO, radius * (0.3 + 0.7 * k), Color(0.62, 0.96, 1.0, 1.0 - k))
+	if k < 0.4:
+		PixelFx.ring(self, Vector2.ZERO, radius * (0.3 + 0.7 * k) - 1.0, Color(0.17, 0.77, 0.84, 0.8))

@@ -26,8 +26,8 @@ func _draw() -> void:
 		var a: Array = _pairs[i - 1]
 		var b: Array = _pairs[i]
 		var k: float = 1.0 - b[2] / LIFE
-		var glow := Color(0.35, 0.95, 1.0, 0.18 * k)
-		var core := Color(0.85, 1.0, 1.0, 0.7 * k) if heavy else Color(0.75, 1.0, 1.0, 0.55 * k)
+		var glow := Color(PixelFx.CYAN[1], 0.45 * k)
+		var core := Color(PixelFx.CYAN[3], 0.8 * k) if heavy else Color(PixelFx.CYAN[2], 0.7 * k)
 		# 只在刀身外半段画拖尾，刀尖那一截最亮
 		var root_a: Vector2 = a[0].lerp(a[1], 0.45)
 		var root_b: Vector2 = b[0].lerp(b[1], 0.45)
@@ -35,7 +35,7 @@ func _draw() -> void:
 		var mid_a: Vector2 = a[0].lerp(a[1], 0.75)
 		var mid_b: Vector2 = b[0].lerp(b[1], 0.75)
 		_quad(mid_a, a[1], b[1], mid_b, core)
-		draw_line(a[1], b[1], Color(1.6, 2.6, 2.8, k), 1.5, true)
+		PixelFx.line(self, a[1], b[1], Color(PixelFx.WHITE, k), 1)
 
 
 ## 直接按两个三角形画，刀光扫过时四边形可能自相交，不能走多边形三角剖分

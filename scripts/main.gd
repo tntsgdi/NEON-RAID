@@ -362,6 +362,8 @@ func set_pixel_mode(on: bool) -> void:
 	world.reparent(_viewport if on else self, false)
 	camera.make_current()
 	camera.reset_physics_interpolation()
+	# 像素画面不用渐变暗角：在很暗的雨夜画面上，8 位显示会把它的渐变显示成一圈可见的台阶
+	_post.set_shader_parameter("vignette", 0.0 if on else 0.22)
 
 
 func restart() -> void:

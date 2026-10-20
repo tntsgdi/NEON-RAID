@@ -87,7 +87,16 @@ func _goal_dir(body: Node2D) -> int:
 					bd = d
 					e = c
 			if e != null:
+				# 清场：目标够不着（在头顶平台上、卡住了）就直接夺走它——被夺的机体不再算敌人
 				var dx: float = e.global_position.x - body.global_position.x
+				if absf(e.global_position.y - body.global_position.y) > 50.0 and e.is_in_group("possessable"):
+					# 正下方被平台挡住视线：先横着走开一点，斜着夺
+					if absf(dx) < 115.0:
+						return -1 if dx > 0.0 else 1
+					if e.center().distance_to(body.global_position + Vector2(0, -18)) > controller.reach() - 30.0:
+						return 1 if dx > 0.0 else -1
+					_try_possess(body, e)
+					return 0
 				if absf(dx) < 20.0:
 					return 0
 				return 1 if dx > 0.0 else -1

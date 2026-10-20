@@ -63,10 +63,13 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	# 像素意识流：拖尾是一串 1–2 像素的亮点（越新越亮越粗），头部是一个 3×3 的光团 + 白芯
 	var n := _trail.size()
 	for i in range(1, n):
 		var k := float(i) / n
-		draw_line(to_local(_trail[i - 1]), to_local(_trail[i]), Color(0.5, 1.8, 2.1, 0.15 + 0.7 * k), 0.8 + 3.2 * k, true)
+		var col: Color = PixelFx.CYAN[1].lerp(PixelFx.CYAN[3], k)
+		PixelFx.line(self, to_local(_trail[i - 1]), to_local(_trail[i]), Color(col, 0.4 + 0.6 * k), 2 if k > 0.6 else 1)
 	if not done:
-		draw_circle(Vector2.ZERO, 6.0, Color(0.4, 1.6, 1.9, 0.25))
-		draw_circle(Vector2.ZERO, 3.0, Color(2.2, 2.6, 2.8))
+		draw_rect(Rect2(-2, -2, 5, 5), Color(PixelFx.CYAN[2], 0.6))
+		draw_rect(Rect2(-1, -1, 3, 3), PixelFx.CYAN[3])
+		draw_rect(Rect2(0, 0, 1, 1), Color(2.4, 2.6, 2.7))

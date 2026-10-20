@@ -16,10 +16,6 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	# 像素十字星：头 2 帧最大，之后收缩
 	var k := 1.0 - _t / 0.05
-	var r := radius * (0.4 + 0.6 * k)
-	draw_circle(Vector2.ZERO, r * 0.25, Color(color.r * 0.7, color.g * 0.7, color.b * 0.7))
-	draw_circle(Vector2.ZERO, r * 0.7, Color(color, 0.25 * k))
-	for a in [0.0, PI * 0.5]:
-		var d := Vector2.from_angle(a + 0.4) * r * 1.4
-		draw_line(-d, d, Color(color, k), 1.5, true)
+	PixelFx.star(self, Vector2.ZERO, int(round(radius * 0.35 * (0.5 + 0.5 * k))), Color(color, 1.0))

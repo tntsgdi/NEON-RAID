@@ -43,7 +43,7 @@ func _draw() -> void:
 		for i in seg:
 			if i % 2 == 0:
 				var a0 := TAU * i / seg
-				draw_arc(c, Consciousness.POSSESS_RANGE, a0, a0 + TAU / seg, 3, Color(1.6, 1.7, 1.8, 0.5 * a), 1.0, true)
+				draw_arc(c, Consciousness.POSSESS_RANGE, a0, a0 + TAU / seg, 3, Color(1.6, 1.7, 1.8, 0.5 * a), 1.0, false)
 	if _shown <= 0.0:
 		return
 	var ready := cooldown_k <= 0.0
@@ -57,13 +57,13 @@ func _draw() -> void:
 	for sx in [-1.0, 1.0]:
 		for sy in [-1.0, 1.0]:
 			var c := p + Vector2(h.x * sx, h.y * sy)
-			draw_line(c, c - Vector2(arm * sx, 0), col, 1.5, true)
-			draw_line(c, c - Vector2(0, arm * sy), col, 1.5, true)
+			draw_line(c, c - Vector2(arm * sx, 0), col, 1.5, false)
+			draw_line(c, c - Vector2(0, arm * sy), col, 1.5, false)
 	# 冷却进度：外圈一道弧从空转到满，满了 E 才亮
 	if not ready:
 		var r := maxf(h.x, h.y) + 5.0
-		draw_arc(p, r, -PI * 0.5, -PI * 0.5 + TAU * (1.0 - cooldown_k), 32, Color(0.5, 1.6, 1.9, 0.9 * _shown), 2.0, true)
-		draw_arc(p, r, -PI * 0.5 + TAU * (1.0 - cooldown_k), PI * 1.5, 32, Color(0.3, 0.35, 0.4, 0.4 * _shown), 1.0, true)
+		draw_arc(p, r, -PI * 0.5, -PI * 0.5 + TAU * (1.0 - cooldown_k), 32, Color(0.5, 1.6, 1.9, 0.9 * _shown), 2.0, false)
+		draw_arc(p, r, -PI * 0.5 + TAU * (1.0 - cooldown_k), PI * 1.5, 32, Color(0.3, 0.35, 0.4, 0.4 * _shown), 1.0, false)
 	if in_range:
 		# 键帽："E"
 		var font := ThemeDB.fallback_font

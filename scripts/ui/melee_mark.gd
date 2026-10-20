@@ -41,6 +41,6 @@ func _draw() -> void:
 	var p := _pos + Vector2(0, sin(_t * 6.0) * 1.5 - (1.0 - a) * 6.0)
 	var col := Color(0.5, 1.7, 1.9, 0.9 * a).lerp(Color(2.6, 2.8, 2.8, a), _pulse)
 	# 朝下的小刀：刀身 + 护手 + 刀尖
-	draw_line(p + Vector2(0, -9), p + Vector2(0, -1), col, 2.0, true)
-	draw_line(p + Vector2(-3, -6), p + Vector2(3, -6), col, 1.5, true)
+	draw_line(p + Vector2(0, -9), p + Vector2(0, -1), col, 2.0, false)
+	draw_line(p + Vector2(-3, -6), p + Vector2(3, -6), col, 1.5, false)
 	draw_colored_polygon(PackedVector2Array([p + Vector2(-2, -1), p + Vector2(2, -1), p + Vector2(0, 3)]), col)

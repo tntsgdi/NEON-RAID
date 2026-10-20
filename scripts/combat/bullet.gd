@@ -119,7 +119,9 @@ func _draw() -> void:
 	var length := 14.0 if team == Team.PLAYER else 8.0
 	if deflected:
 		length = 20.0
-	var c := color()
-	draw_line(-dir * length, Vector2.ZERO, Color(c, 0.35), 4.0, true)
-	draw_line(-dir * length * 0.6, Vector2.ZERO, c, 2.0, true)
-	draw_circle(Vector2.ZERO, 2.0 if team == Team.PLAYER else 2.5, Neon.WHITE_HOT)
+	# 像素电磁弹：2 像素宽的尾迹（暗阶 → 亮阶），弹头 2×2 白芯；每 2 帧闪一下
+	var ramp: Array = PixelFx.CYAN if (team == Team.PLAYER or deflected) else PixelFx.RED
+	var flick := int(life * 30.0) % 2 == 0
+	PixelFx.line(self, -dir * length, -dir * length * 0.5, ramp[1], 1)
+	PixelFx.line(self, -dir * length * 0.5, Vector2.ZERO, ramp[2], 2)
+	draw_rect(Rect2(Vector2(-1, -1), Vector2(2, 2)), ramp[3] if flick else PixelFx.WHITE)

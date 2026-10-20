@@ -51,8 +51,13 @@ const ACTOR_LIGHT_MASK := 2
 
 
 ## 挂一个点光源（只照亮光照层 1：地面、墙、背景）
+## 像素美术里不用机体身上的点光源（它会在雨丝、积水上照出一个大光圈）；发光靠像素本身的高光色
+static var lights_enabled := false
+
+
 static func add_light(parent: Node2D, color: Color, energy: float, scale: float, offset := Vector2.ZERO) -> PointLight2D:
 	var l := PointLight2D.new()
+	l.enabled = lights_enabled
 	l.texture = light_texture()
 	l.color = color
 	l.energy = energy

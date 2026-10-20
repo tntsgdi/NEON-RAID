@@ -541,7 +541,8 @@ func spawn_ghost(parent: Node, alpha: float) -> void:
 	g.shapes = _shapes.duplicate(true)
 	parent.add_child(g)
 	g.global_transform = global_transform
-	g.modulate = Color(0.3, 0.95, 1.0, alpha)
+	# 残影：整体压成玩家青的一个暗色剪影（不发光），像素风的"拖影"
+	g.modulate = Color(0.25, 0.75, 0.85, alpha)
 	g.z_index = -1
 	var tw := g.create_tween()
 	tw.tween_property(g, "modulate:a", 0.0, 0.22)

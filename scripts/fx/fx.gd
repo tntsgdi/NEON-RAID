@@ -13,8 +13,8 @@ static func dust(parent: Node, pos: Vector2, dir_x: float, amount: int) -> void:
 	p.initial_velocity_max = 75.0
 	p.gravity = Vector2(0, 120)
 	p.scale_amount_min = 1.0
-	p.scale_amount_max = 2.5
-	p.color = Color(0.5, 0.56, 0.64, 0.85)
+	p.scale_amount_max = 2.0
+	p.color = Color(0.35, 0.39, 0.47, 0.9)
 
 
 ## 命中火花：沿 dir 方向喷出的亮线
@@ -30,7 +30,7 @@ static func sparks(parent: Node, pos: Vector2, dir: Vector2, amount: int, color 
 	p.damping_max = 500.0
 	p.gravity = Vector2(0, 300)
 	p.scale_amount_min = 1.0
-	p.scale_amount_max = 2.0
+	p.scale_amount_max = 1.0
 	p.color = color
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 1))

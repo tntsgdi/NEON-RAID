@@ -42,16 +42,39 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var k := 1.0 - _t / life
-	var n := 16
-	# 细月牙：只占外侧一圈，越淡越细
-	var inner := reach * lerpf(0.72, 0.96, 1.0 - k)
-	var pts := PackedVector2Array()
-	for i in n + 1:
-		pts.append(Vector2.from_angle(lerpf(a0, a1, float(i) / n)) * reach)
-	var outer := pts.duplicate()
-	for i in range(n, -1, -1):
-		pts.append(Vector2.from_angle(lerpf(a0, a1, float(i) / n)) * inner)
-	var col := Color(0.45, 0.95, 1.0, 0.3 * k) if not heavy else Color(0.75, 1.0, 1.0, 0.45 * k)
-	draw_colored_polygon(pts, col)
-	draw_polyline(outer, Color(1.8, 2.6, 2.8, k), 2.0 if heavy else 1.5, true)
+	# 像素月牙（逐帧感：按 30 帧/秒跳格）。外缘一圈最亮（白 / 亮青），向内渐暗，内侧随时间被"吃掉"
+	var step := floorf(_t * 30.0) / 30.0
+	var k := clampf(1.0 - step / life, 0.0, 1.0)
+	var outer := reach
+	var inner := reach * lerpf(0.55, 0.92, 1.0 - k)
+	var lo := minf(a0, a1)
+	var hi := maxf(a0, a1)
+	var r := int(ceil(outer)) + 1
+	for y in range(-r, r + 1):
+		for x in range(-r, r + 1):
+			var d := Vector2(x + 0.5, y + 0.5)
+			var dist := d.length()
+			if dist > outer or dist < inner:
+				continue
+			var ang := d.angle()
+			# 角度落在弧内（处理跨 ±PI）
+			var inside := false
+			for off in [-TAU, 0.0, TAU]:
+				if ang + off >= lo and ang + off <= hi:
+					inside = true
+			if not inside:
+				continue
+			var t := (dist - inner) / maxf(outer - inner, 0.001)   # 0 内缘 → 1 外缘
+			var col: Color
+			if t > 0.82:
+				col = PixelFx.WHITE if heavy or k > 0.6 else PixelFx.CYAN[3]
+			elif t > 0.55:
+				col = PixelFx.CYAN[3] if heavy else PixelFx.CYAN[2]
+			elif t > 0.25:
+				col = PixelFx.CYAN[2] if heavy else PixelFx.CYAN[1]
+			else:
+				# 内缘抖动：棋盘格去掉一半像素
+				if (x + y) % 2 != 0:
+					continue
+				col = PixelFx.CYAN[1]
+			draw_rect(Rect2(x, y, 1, 1), Color(col, 0.35 + 0.65 * k))

@@ -173,7 +173,7 @@ func update(m: Dictionary, delta: float) -> void:
 			var blink := 0.5 + 0.5 * sin(_time * 14.0)
 			mod = Color.WHITE.lerp(Color(2.2, 2.3, 2.4), blink)
 		"parked":
-			mod = Color(0.75, 0.8, 0.85)
+			mod = Color(0.85, 0.88, 0.9)
 	wake = maxf(wake - delta, 0.0)
 	if wake > 0.0:
 		mod = Color(0.5, 0.55, 0.6).lerp(Color.WHITE, pow(1.0 - wake / 0.4, 2.0))
@@ -186,12 +186,14 @@ func update(m: Dictionary, delta: float) -> void:
 	_part("arm_b" + sfx, shoulder, hdir.angle(), mod)
 	_part("hammer" + sfx, shoulder + hdir * 10.0, hdir.angle(), mod)
 	# 躯干、头、撞角护板
-	_part("torso" + sfx, pelvis, rot, mod)
+	# 停放 / 瘫痪：主体部件换成白色高光版本（白 = 可以夺）
+	var wsfx := "_w" if look == "parked" or look == "stunned" else sfx
+	_part("torso" + wsfx, pelvis, rot, mod)
 	var hrot := deg_to_rad(_lean * 0.4 + (18.0 if look == "stunned" or look == "parked" else 0.0))
 	var hc := top + side * 8.0 + up * 3.0
-	_part("head" + sfx, hc, hrot, mod)
+	_part("head" + wsfx, hc, hrot, mod)
 	var plate_c := pelvis + up * 17.0 + side * 20.0
-	_part("plate" + sfx, plate_c, rot, mod)
+	_part("plate" + wsfx, plate_c, rot, mod)
 	# 前腿
 	_leg(pelvis + side * 7.0, _feet[0], sfx, mod)
 

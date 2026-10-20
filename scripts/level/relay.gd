@@ -38,13 +38,13 @@ func _draw() -> void:
 	var pulse := 0.5 + 0.5 * sin(_t * 3.0)
 	var core := Color(0.5, 1.6, 1.9).lerp(Color(2.2, 2.6, 2.8), _on)
 	draw_circle(top, 4.0 + _on * 1.5, core)
-	draw_arc(top, 9.0 + pulse * 3.0, 0.0, TAU, 24, Color(0.4, 1.5, 1.8, 0.35 + 0.3 * _on), 1.2, true)
+	draw_arc(top, 9.0 + pulse * 3.0, 0.0, TAU, 24, Color(0.4, 1.5, 1.8, 0.35 + 0.3 * _on), 1.2, false)
 	# 地面上的接收区
-	draw_arc(Vector2.ZERO, REACH, PI, TAU, 32, Color(0.4, 1.4, 1.7, 0.25 + 0.35 * _on), 1.0, true)
+	draw_arc(Vector2.ZERO, REACH, PI, TAU, 32, Color(0.4, 1.4, 1.7, 0.25 + 0.35 * _on), 1.0, false)
 	# 站进去：放大的夺壳范围（虚线圈）
 	if _on > 0.01:
 		var seg := 72
 		for i in seg:
 			if i % 2 == 0:
 				var a0 := TAU * i / seg + _t * 0.2
-				draw_arc(top, RANGE * (0.85 + 0.15 * _on), a0, a0 + TAU / seg, 3, Color(0.5, 1.6, 1.9, 0.35 * _on), 1.0, true)
+				draw_arc(top, RANGE * (0.85 + 0.15 * _on), a0, a0 + TAU / seg, 3, Color(0.5, 1.6, 1.9, 0.35 * _on), 1.0, false)

@@ -26,11 +26,17 @@ func _run() -> void:
 	for i in 10:
 		await physics_frame
 	main.hide_hud = not OS.get_cmdline_user_args().has("--hud")
+	if OS.get_cmdline_user_args().has("--novig"):
+		main._post.set_shader_parameter("vignette", 0.0)
 	var n := 0
 	var spots := SPOTS.duplicate()
 	for d in main.region.decor:
 		if d[0] == "B":
-			spots.insert(0, [d[1].x - 150.0, [{"frames": 30, "move": Vector2(1, 0)}]])
+			spots.insert(0, [d[1].x - 170.0, [{"frames": 24, "move": Vector2(1, 0)}]])
+	# 中继过沟：夺侦察机飞到沟上空
+	var relay = main.get_tree().get_first_node_in_group("relay")
+	if relay != null:
+		spots.append([relay.global_position.x - 10.0, [{"frames": 6}, {"frames": 1, "press": ["possess"], "aim": Vector2(0.95, -0.3).normalized()}, {"frames": 70, "move": Vector2(1, -0.2)}]])
 	for spot in spots:
 		main.place(Vector2(spot[0], 0))
 		var inp = load("res://scripts/player/scripted_input.gd").new(spot[1])

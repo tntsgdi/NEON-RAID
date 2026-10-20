@@ -200,8 +200,8 @@ func _physics_process(delta: float) -> void:
 		velocity = _lunge_vel
 		_ghost_timer -= delta
 		if _ghost_timer <= 0.0:
-			_ghost_timer = 0.015
-			_spawn_ghost(0.35)
+			_ghost_timer = 0.03
+			_spawn_ghost(0.22)
 		if _lunge_t <= 0.0:
 			velocity = _lunge_vel.normalized() * 120.0
 			if absf(velocity.x) < _lunge_keep:
@@ -332,8 +332,8 @@ func _dash(delta: float, T: Dictionary) -> void:
 		velocity.y = 5.0  # 贴着地面冲刺时保持落地判定
 	_ghost_timer -= delta
 	if _ghost_timer <= 0.0:
-		_ghost_timer = 0.022
-		_spawn_ghost(0.55)
+		_ghost_timer = 0.04
+		_spawn_ghost(0.32)
 	if _jump_buffer > 0.0:
 		if is_on_floor():
 			_end_dash(T)

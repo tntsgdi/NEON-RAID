@@ -17,7 +17,7 @@ static func draw(ci: CanvasItem, r: Rect2, k: float) -> void:
 		for sy in [-1.0, 1.0]:
 			var corner := Vector2(h.x * sx, h.y * sy)
 			var p0 := c + corner.rotated(rot)
-			ci.draw_line(p0, p0 + Vector2(-arm * sx, 0).rotated(rot), col, 1.5, true)
-			ci.draw_line(p0, p0 + Vector2(0, -arm * sy).rotated(rot), col, 1.5, true)
+			ci.draw_line(p0, p0 + Vector2(-arm * sx, 0).rotated(rot), col, 1.5, false)
+			ci.draw_line(p0, p0 + Vector2(0, -arm * sy).rotated(rot), col, 1.5, false)
 	if white:
 		ci.draw_circle(c, 1.5, col)

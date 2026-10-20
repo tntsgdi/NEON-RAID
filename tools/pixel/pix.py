@@ -213,3 +213,56 @@ def rim(img, color, dirs=((-1, 0), (0, -1))):
                     out[y, x] = rgba(color)
                     break
     return out
+
+
+def read_png(path):
+    """读 8 位 RGBA / RGB PNG（处理全部 5 种行滤波），返回 RGBA 数组"""
+    d = open(path, "rb").read()
+    i = 8
+    w = h = 0
+    ct = 6
+    idat = b""
+    while i < len(d):
+        n = struct.unpack(">I", d[i:i + 4])[0]
+        t = d[i + 4:i + 8]
+        c = d[i + 8:i + 8 + n]
+        if t == b"IHDR":
+            w, h, _, ct = struct.unpack(">IIBB", c[:10])
+        elif t == b"IDAT":
+            idat += c
+        i += 12 + n
+    bpp = 4 if ct == 6 else 3
+    raw = zlib.decompress(idat)
+    stride = w * bpp
+    out = np.zeros((h, stride), np.int32)
+    prev = np.zeros(stride, np.int32)
+    pos = 0
+    for y in range(h):
+        f = raw[pos]
+        line = np.frombuffer(raw[pos + 1:pos + 1 + stride], np.uint8).astype(np.int32)
+        pos += 1 + stride
+        cur = np.zeros(stride, np.int32)
+        if f == 0:
+            cur = line.copy()
+        elif f == 2:
+            cur = (line + prev) & 255
+        else:
+            for x in range(stride):
+                a = cur[x - bpp] if x >= bpp else 0
+                b = prev[x]
+                cc = prev[x - bpp] if x >= bpp else 0
+                if f == 1:
+                    pr = a
+                elif f == 3:
+                    pr = (a + b) // 2
+                else:
+                    pp = a + b - cc
+                    pa, pb, pc = abs(pp - a), abs(pp - b), abs(pp - cc)
+                    pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else cc)
+                cur[x] = (line[x] + pr) & 255
+        out[y] = cur
+        prev = cur
+    img = out.reshape(h, w, bpp).astype(np.uint8)
+    if bpp == 3:
+        img = np.concatenate([img, np.full((h, w, 1), 255, np.uint8)], axis=2)
+    return img
