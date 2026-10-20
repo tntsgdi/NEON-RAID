@@ -43,6 +43,8 @@ var _wipe := 1.0
 var _shell_text := ""
 var _shell_wipe := 1.0
 var _oc_age := 0.0
+var _toast: Label
+var _toast_t := 0.0
 var _t := 0.0
 ## 夺壳冷却剩余比例（1 = 刚夺完）；冷却结束那一刻"叮"一声
 var possess_k := 0.0:
@@ -86,6 +88,10 @@ func _ready() -> void:
 	_overclock.size.x = 200
 	_overclock.add_theme_color_override("font_color", Color(0.6, 1.0, 1.0))
 	_overclock.visible = false
+	_toast = _label(Vector2(220, 22), 8, HORIZONTAL_ALIGNMENT_CENTER)
+	_toast.size.x = 200
+	_toast.add_theme_color_override("font_color", Color(0.6, 1.6, 1.8))
+	_toast.visible = false
 
 
 func _label(pos: Vector2, font_size: int, align: HorizontalAlignment) -> Label:
@@ -129,6 +135,14 @@ func set_shell(text: String) -> void:
 	_shell.text = text
 	_shell_wipe = 0.0
 	Audio.play("ui_tick", -4.0, 0.9)
+
+
+## 区段名下面的小字通知（检查点等）：扫描打印出来，1.6 秒后淡出
+func toast(text: String) -> void:
+	_toast.text = text
+	_toast.visible = true
+	_toast_t = 1.6
+	Audio.play("ui_ready", -10.0, 0.8)
 
 
 ## 屏幕下方的提示：切角面板滑入，显示几秒后滑出
@@ -185,6 +199,11 @@ func _process(delta: float) -> void:
 		_tip.position.y = 300.0 + (1.0 - vis) * 22.0
 		_tip.modulate.a = vis
 		_tip.visible = _tip_time > 0.0
+	if _toast_t > 0.0:
+		_toast_t -= real
+		_toast.visible_ratio = clampf((1.6 - _toast_t) / 0.25, 0.0, 1.0)
+		_toast.modulate.a = clampf(_toast_t / 0.4, 0.0, 1.0)
+		_toast.visible = _toast_t > 0.0
 	if _overclock.visible:
 		_oc_age += real
 		# 超频字样闪烁着亮起（像信号接通），之后稳定呼吸

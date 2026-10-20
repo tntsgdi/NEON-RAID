@@ -33,6 +33,7 @@ func _run() -> void:
 	await _soul_flow()
 	await _heavy_controlled()
 	await _heavy_hostile()
+	await _regions()
 
 	if failures.is_empty():
 		print("M4 TEST PASS")
@@ -261,3 +262,86 @@ func _heavy_hostile() -> void:
 		await physics_frame
 	_check(h.state != h.State.STUNNED and not h.is_in_group("possessable") and is_equal_approx(h.poise, h.POISE * 0.5), "4 秒没夺就站起来，耐久回一半（%.1f）" % h.poise)
 	h.queue_free()
+
+
+## 第 1 关 001–005：都能加载、起点站在地上、有出口；中继放大夺壳距离；安保门只给安保机开；
+## 钥匙机体没了回检查点会补；区域打完自动进下一个区域
+func _regions() -> void:
+	for i in 5:
+		main.load_level("d13", i)
+		await _frames(30)
+		var r = main.region
+		_check(r != null and r.solids.size() > 3 and player.is_on_floor(), "区域 %03d 加载、起点站在地上" % (i + 1))
+		_check(r.finish_x > r.start.x + 1000.0 and r.checkpoints.size() >= 2, "区域 %03d 有出口和检查点（终点 %.0f，检查点 %d）" % [i + 1, r.finish_x, r.checkpoints.size()])
+	# 002：站在中继旁，能夺 220 像素外的失控侦察机
+	main.load_level("d13", 1)
+	await _frames(5)
+	var relay = main.get_tree().get_first_node_in_group("relay")
+	main.place(relay.global_position + Vector2(-10, 0))
+	await _frames(5)
+	_check(main.controller.reach() > 500.0, "站在中继旁夺壳距离放大（%.0f）" % main.controller.reach())
+	var far = null
+	for n in main.get_tree().get_nodes_in_group("possessable"):
+		if n != player and n.global_position.distance_to(player.global_position) > 300.0:
+			far = n
+			break
+	_check(far != null, "深沟对面有可夺的侦察机")
+	main.controller.input.aim = (far.center() - player.global_position).normalized() if false else main.controller.input.aim
+	var t = main.controller._possess_target()
+	_check(t != null and t.global_position.distance_to(player.global_position) > 300.0, "中继旁按 E 能夺到远处的侦察机")
+	# 004：安保门——基础机体过不去，夺了钥匙安保机走过去门就开
+	main.load_level("d13", 3)
+	await _frames(5)
+	var door = main.get_tree().get_first_node_in_group("security_door")
+	var key = null
+	for n in main.region._keys:
+		if n[0] == "k":
+			key = n[2]
+	_check(door != null and key != null, "004 有安保门和钥匙安保机")
+	main.place(Vector2(door.global_position.x - 30, door.global_position.y + 96))
+	await _frames(20)
+	_check(not door._cs.disabled, "基础机体站在门前，门不开")
+	key.global_position = Vector2(door.global_position.x - 60, door.global_position.y + 96)
+	main.controller.possess(key)
+	await _frames(10)
+	var inp = load("res://scripts/player/scripted_input.gd").new([{"frames": 120, "move": R}])
+	main.controller.input = inp
+	key.input = inp
+	var opened := false
+	while not inp.done:
+		await physics_frame
+		opened = opened or door._cs.disabled
+	_check(opened and key.global_position.x > door.global_position.x + 16.0, "夺来的安保机走到门前门就开，走了过去")
+	main.controller.input = load("res://scripts/player/device_input.gd").new()
+	main.controller.return_to_base(main.region.start)
+	# 钥匙机体没了：回检查点补一台
+	var h = null
+	for n in main.region._keys:
+		if n[0] == "h":
+			h = n[2]
+	h.queue_free()
+	await _frames(2)
+	main.place(main.region.start)
+	await _frames(2)
+	var again = null
+	for n in main.region._keys:
+		if n[0] == "h":
+			again = n[2]
+	_check(is_instance_valid(again) and again != h, "停放的重装机被毁后，回检查点会补一台")
+	# 区域打完：走过出口线 → 小结算 → 自动进下一个区域
+	main.load_level("d13", 0)
+	await _frames(5)
+	main.place(Vector2(main.region.finish_x - 40, 0))
+	main.running = true
+	var inp2 = load("res://scripts/player/scripted_input.gd").new([{"frames": 40, "move": R}])
+	player.input = inp2
+	main.controller.input = inp2
+	var n := 0
+	while main.region_index == 0 and n < 600:
+		await physics_frame
+		n += 1
+	_check(main.region_index == 1, "001 打完自动进入 002")
+	main.controller.input = load("res://scripts/player/device_input.gd").new()
+	player.input = main.controller.input
+	main.load_level("arena")
+	arena = main.arena

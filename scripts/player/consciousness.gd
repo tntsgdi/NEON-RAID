@@ -87,8 +87,18 @@ func _aim_dir() -> Vector2:
 	return input.aim.normalized()
 
 
+## 当前的夺壳距离：站在意识中继旁边时放大到中继的范围
+func reach() -> float:
+	for r in get_tree().get_nodes_in_group("relay"):
+		if r.covers(current):
+			return Relay.RANGE
+	return POSSESS_RANGE
+
+
 func _update_lock() -> void:
 	var origin: Vector2 = current.global_position + Vector2(0, -18)
+	var possess_reach := reach()
+	var lock_range := maxf(LOCK_RANGE, possess_reach + 40.0)
 	var dir := _aim_dir()
 	var cone := deg_to_rad(75.0 if input.aim_keys else 35.0)
 	if current is Wisp:
@@ -104,7 +114,7 @@ func _update_lock() -> void:
 			seen[n] = true
 			var to: Vector2 = n.center() - origin
 			var d := to.length()
-			if d > LOCK_RANGE or not _visible(origin, n):
+			if d > lock_range or not _visible(origin, n):
 				continue
 			var ang := absf(dir.angle_to(to)) if d > 1.0 else 0.0
 			if ang > cone and d > 40.0:
@@ -121,7 +131,7 @@ func _update_lock() -> void:
 	if is_instance_valid(lock) and prev_score < INF and prev_score < best_score * 1.3:
 		best = lock
 	lock = best
-	lock_in_range = lock != null and lock.is_in_group("possessable") and lock.center().distance_to(origin) <= POSSESS_RANGE
+	lock_in_range = lock != null and lock.is_in_group("possessable") and lock.center().distance_to(origin) <= possess_reach
 
 
 ## 墙后面的不锁定、不能夺
@@ -142,7 +152,7 @@ func _possess_target() -> Node2D:
 		if n == current or not n.alive():
 			continue
 		var to: Vector2 = n.center() - origin
-		if to.length() > POSSESS_RANGE or not _visible(origin, n):
+		if to.length() > reach() or not _visible(origin, n):
 			continue
 		var ang := absf(dir.angle_to(to)) if not (current is Wisp) else 0.0
 		if ang > deg_to_rad(80.0):

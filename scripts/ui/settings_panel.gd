@@ -2,6 +2,8 @@ class_name SettingsPanel
 extends PanelContainer
 ## 设置页（Esc）：闪光、色差、震屏、雨、辉光、音乐和音效音量。打开时游戏暂停。
 
+signal to_title
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -47,6 +49,12 @@ func _ready() -> void:
 		slider.value_changed.connect(func(value): Settings.set_value(key, value))
 		grid.add_child(slider)
 	resized.connect(func(): pivot_offset = size * 0.5)
+	var back := Button.new()
+	back.text = "SET_TO_TITLE"
+	back.focus_mode = Control.FOCUS_NONE
+	back.add_theme_font_size_override("font_size", 8)
+	back.pressed.connect(func(): to_title.emit())
+	col.add_child(back)
 	var hint := Label.new()
 	hint.text = "SET_HINT"
 	hint.add_theme_font_size_override("font_size", 7)

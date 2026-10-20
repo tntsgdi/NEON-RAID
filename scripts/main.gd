@@ -10,6 +10,15 @@ var level: Node2D
 var range_: TestRange
 var arena: CombatArena
 var possess_range: PossessRange
+## 第 1 关的区域（001–005）
+var region: Region
+var region_index := -1
+var title: TitleMenu
+## 区域打完后自动进下一个区域的倒计时（真实时间，< 0 = 没在倒计时）
+var _advance_t := -1.0
+var _last_cp := Vector2.INF
+## 整关累计（005 打完出总评）
+var _total := {"time": 0.0, "hits": 0, "deflect": 0, "stomp": 0}
 ## 基础机体（R-0 原型机身）
 var player: Player
 var controller: Consciousness
@@ -141,12 +150,58 @@ func _ready() -> void:
 	tuning_panel = TuningPanel.new()
 	tuning_panel.visible = false
 	ui.add_child(tuning_panel)
+	title = TitleMenu.new()
+	ui.add_child(title)
+	title.chosen.connect(_on_title_chosen)
 	settings_panel = SettingsPanel.new()
 	settings_panel.visible = false
+	settings_panel.to_title.connect(open_title)
 	ui.add_child(settings_panel)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
-	load_level("range")
+	# 测试直接进手感测试场；正式运行：背后摆着区域 001，先打开标题菜单
+	if Tuning.is_test_run():
+		load_level("range")
+	else:
+		load_level("d13", 0)
+		open_title()
+
+
+## 打开标题菜单（游戏暂停）
+func open_title() -> void:
+	if settings_panel.is_open:
+		settings_panel.toggle()
+	_advance_t = -1.0
+	title.open()
+	get_tree().paused = true
+	Music.intensity = 0.25
+
+
+func _on_title_chosen(action: String, arg: int) -> void:
+	match action:
+		"continue":
+			title.close()
+			get_tree().paused = false
+			var r := int(Progress.data.region)
+			load_level("d13", r)
+			var cp: Array = Progress.data.checkpoint
+			if not cp.is_empty():
+				place(Vector2(cp[0], cp[1]))
+				_last_cp = Vector2(cp[0], cp[1])
+		"region":
+			title.close()
+			get_tree().paused = false
+			if arg == 0:
+				_total = {"time": 0.0, "hits": 0, "deflect": 0, "stomp": 0}
+			load_level("d13", arg)
+		"training":
+			title.close()
+			get_tree().paused = false
+			load_level(["range", "arena", "possess"][arg])
+		"settings":
+			settings_panel.toggle()
+		"quit":
+			get_tree().quit()
 
 
 ## HDR 辉光：只有超过 1.0 的颜色（Neon.*_HOT / *_GLOW）会发光，霓虹真正亮起来
@@ -241,7 +296,7 @@ func _make_theme() -> Theme:
 
 
 ## kind："range"（手感测试场）、"arena"（战斗训练场）或 "possess"（夺壳训练场）
-func load_level(kind: String) -> void:
+func load_level(kind: String, index := 0) -> void:
 	# 先回到基础机体：夺来的机体属于旧场地，场地移除前要先让意识离开它
 	controller.return_to_base(player.global_position)
 	if level != null:
@@ -250,7 +305,17 @@ func load_level(kind: String) -> void:
 	range_ = null
 	arena = null
 	possess_range = null
-	if kind == "possess":
+	region = null
+	region_index = -1
+	_advance_t = -1.0
+	_last_cp = Vector2.INF
+	if kind == "d13":
+		region = Region.new(index)
+		region.player = player
+		region.tip.connect(func(k): hud.show_tip(tr(k)))
+		region_index = index
+		level = region
+	elif kind == "possess":
 		possess_range = PossessRange.new()
 		possess_range.player = player
 		level = possess_range
@@ -301,6 +366,8 @@ func restart() -> void:
 func place(pos: Vector2, vel := Vector2.ZERO) -> void:
 	controller.return_to_base(pos)
 	player.velocity = vel
+	if level != null and level.has_method("on_checkpoint"):
+		level.on_checkpoint()
 	_look = 0.0
 	camera.position = pos + Vector2(0, -40)
 	camera.reset_smoothing()
@@ -312,6 +379,8 @@ func _update_tips() -> void:
 	if controller.lock_in_range:
 		_tip("TIP_POSSESS")
 	if arena == null:
+		if range_ == null:
+			return
 		if not _tips.has("TIP_RANGE"):
 			_tip("TIP_RANGE")
 		elif range_ != null and player.global_position.x > 1900.0 and player.global_position.x < 2100.0:
@@ -377,6 +446,51 @@ func _on_player_died() -> void:
 	get_tree().create_timer(0.25, true, false, true).timeout.connect(func(): place(level.checkpoint_for(player.last_floor_x)))
 
 
+## 区域里每帧：走过新检查点就存档；区域打完后倒计时进下一个区域
+func _region_tick(delta: float, body: Node2D) -> void:
+	var real := delta / maxf(Engine.time_scale, 0.0001)
+	if _advance_t >= 0.0:
+		_advance_t -= real
+		if _advance_t < 0.0:
+			if region_index < 4:
+				load_level("d13", region_index + 1)
+			else:
+				open_title()
+		return
+	var on_floor: bool = body.is_on_floor() if body.has_method("is_on_floor") else false
+	if on_floor:
+		var cp: Vector2 = level.checkpoint_for(body.global_position.x)
+		if cp != _last_cp:
+			if _last_cp != Vector2.INF and cp.x > _last_cp.x:
+				hud.toast(tr("HUD_CHECKPOINT"))
+			_last_cp = cp
+			if cp != level.start_pos() or region_index > 0:
+				Progress.reach_checkpoint(region_index, cp)
+
+
+func _grade(par: float) -> String:
+	var score: float = 1000.0 - maxf(0.0, run_time - par) * 6.0 - stats.hits * 150.0 + stats.deflect * 80.0 + stats.parry * 100.0 + stats.perfect_dodge * 60.0 + stats.get("stomp", 0) * 40.0
+	return "S" if score >= 1200.0 else ("A" if score >= 950.0 else ("B" if score >= 700.0 else "C"))
+
+
+## 区域打完：小结算卡（用时、受击、弹反、踩头、评级），存档，2.6 秒后自动进下一个区域；005 打完出整关总评
+func _on_region_clear() -> void:
+	var record: bool = Progress.clear_region(region_index, run_time)
+	_total.time += run_time
+	_total.hits += stats.hits
+	_total.deflect += stats.deflect + stats.parry
+	_total.stomp += stats.get("stomp", 0)
+	var grade := _grade(float(region.data.get("par", 50.0)))
+	var body_text := tr("REGION_BODY") % [Hud._fmt(run_time), stats.hits, stats.deflect + stats.parry, stats.get("stomp", 0)]
+	if record:
+		body_text += "\n" + tr("REGION_RECORD")
+	hud.show_card(tr("REGION_CLEAR") % [tr(region.data.name), grade], body_text)
+	_advance_t = 2.8
+	if region_index == 4:
+		hud.show_card(tr("DEMO_CLEAR"), tr("DEMO_BODY") % [Hud._fmt(_total.time), _total.hits, _total.deflect, _total.stomp])
+		_advance_t = 6.0
+
+
 ## 训练三波打完：弹评级卡，然后进入生存模式
 func _on_training_clear() -> void:
 	# 45 秒内打完不扣时间分；S 级大约要求一局里 3–4 次弹反/招架且不太挨打
@@ -387,9 +501,10 @@ func _on_training_clear() -> void:
 
 
 func _process(delta: float) -> void:
-	if Input.is_action_just_pressed("settings"):
+	hud.visible = not title.visible
+	if Input.is_action_just_pressed("settings") and (not title.visible or settings_panel.is_open):
 		settings_panel.toggle()
-		get_tree().paused = settings_panel.is_open
+		get_tree().paused = settings_panel.is_open or title.visible
 		TimeFx.reset()
 	if get_tree().paused:
 		return
@@ -419,13 +534,23 @@ func _process(delta: float) -> void:
 			running = false
 			finished = true
 			best = run_time if best < 0.0 else minf(best, run_time)
+			if region != null:
+				_on_region_clear()
+	if region != null:
+		_region_tick(delta, body)
 	if body.global_position.y > level.pit_y():
 		# 掉进深渊：基础机体回检查点；夺来的机体或光球掉下去也一样（不再弹光球）
 		place(level.checkpoint_for(player.last_floor_x if body == player else x))
 		body = player
 
 	# 配乐：战斗训练场有敌人时战斗层全开，清场后回落；手感测试场高速跑动时稍微加一点
-	if possess_range != null:
+	if region != null:
+		var near := 0
+		for e in get_tree().get_nodes_in_group("enemy"):
+			if e.alive() and e.global_position.distance_to(body.global_position) < 420.0:
+				near += 1
+		Music.intensity = 1.0 if near >= 3 or (near > 0 and player.hp == 1) else (0.75 if near > 0 else 0.35)
+	elif possess_range != null:
 		Music.intensity = 0.7 if x > 900.0 else 0.4
 	elif arena != null:
 		if arena.enemies.is_empty():
