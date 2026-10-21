@@ -47,7 +47,7 @@ func _physics_process(delta: float) -> void:
 			_hit[n] = true
 			n.take_hit(dir if not _back else -dir, 2, "rail")
 			Fx.sparks(get_parent(), global_position, dir, 10, Color(1.0, 2.2, 2.4))
-			Audio.play("hit_heavy", -4.0, 1.2)
+			Audio.play("disc_hit", -2.0)
 			TimeFx.hitstop(0.03)
 	_trail.append(global_position)
 	if _trail.size() > 8:

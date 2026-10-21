@@ -23,8 +23,8 @@ func hitstop(sec: float) -> void:
 
 
 func slowmo(sec: float, scale: float, tag := "") -> void:
-	if tag == "possess" and _clock < _slow_until and _slow_tag == "":
-		return  # 超频慢动作期间夺壳：不打断超频
+	if tag != "" and _clock < _slow_until and (_slow_tag == "" or (tag == "kill" and _slow_tag == "possess")):
+		return  # 超频慢动作期间夺壳 / 终结：不打断超频；终结一击也不打断夺壳光流
 	_slow_until = maxf(_slow_until, _clock + sec)
 	_slow_scale = scale
 	_slow_tag = tag

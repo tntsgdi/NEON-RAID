@@ -115,9 +115,11 @@ func take_hit(dir: Vector2, power: int, hit_kind := "slash") -> int:
 	rig.hit(dir.x if absf(dir.x) > 0.1 else float(-facing), power)
 	if state == State.STUNNED:
 		hp -= power
+		get_tree().call_group("game", "combo_hit", self, power, hp <= 0)
 		if hp <= 0:
 			_die(dir)
 		return 1
+	get_tree().call_group("game", "combo_hit", self, power, false)
 	poise -= float(power) * (0.5 if hit_kind == "bullet" else 1.0)
 	velocity.x += signf(dir.x) * 20.0  # 霸体：只晃一下
 	if poise <= 0.0:
@@ -158,14 +160,18 @@ func _die(dir: Vector2) -> void:
 	var base := global_position
 	var push := Vector2(signf(dir.x) if absf(dir.x) > 0.1 else -facing, -0.6).normalized()
 	var col := Color(1.25, 0.26, 0.32) if not controlled else Color(0.3, 1.1, 1.25)
-	FxPart.spawn(fx_parent, base + Vector2(0, -30), "rect", Vector2(24, 18), push * 140.0, Color(0.2, 0.05, 0.08), col)
-	FxPart.spawn(fx_parent, base + Vector2(-facing * 10, -34), "rect", Vector2(14, 10), push * 220.0 + Vector2(0, -160), Color(0.42, 0.38, 0.44), col)
-	FxPart.spawn(fx_parent, base + Vector2(-5, -8), "rect", Vector2(5, 16), push * 100.0 + Vector2(-60, -80), col, col)
-	FxPart.spawn(fx_parent, base + Vector2(5, -8), "rect", Vector2(5, 16), push * 120.0 + Vector2(60, -90), col, col)
+	var v := "_p" if controlled else ""
+	FxPart.spawn_sprite(fx_parent, base + Vector2(0, -34), "heavy/torso" + v, push * 160.0 + Vector2(0, -120), Vector2(20, 16))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(-facing * 4, -54), "heavy/head" + v, push * 260.0 + Vector2(0, -240), Vector2(10, 9))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(-facing * 10, -34), "heavy/plate" + v, push * 240.0 + Vector2(0, -180), Vector2(12, 8))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(facing * 14, -30), "heavy/hammer" + v, push * 220.0 + Vector2(facing * 60, -160), Vector2(12, 8))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(-5, -14), "heavy/thigh" + v, push * 110.0 + Vector2(-70, -120), Vector2(6, 12))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(5, -6), "heavy/foot" + v, push * 120.0 + Vector2(70, -130), Vector2(8, 5))
 	Fx.debris(fx_parent, center(), dir, 18, col)
 	Fx.sparks(fx_parent, center(), dir, 24, Color(2.6, 1.0, 0.7))
 	Fx.flash(fx_parent, center(), Color(2.8, 0.9, 0.6), 30.0)
 	Audio.play("break", 0.0, 0.7)
+	Audio.play("kill", -2.0, 0.75)
 	get_tree().call_group("game", "shockwave", center())
 	died.emit(self)
 	queue_free()
@@ -179,6 +185,9 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	rig.mut_k = 0.0
 	Fx.sparks(fx_parent, center(), Vector2.UP, 18, Color(1.0, 2.2, 2.4))
 	Audio.play("mut_grow", -2.0, 0.8)
+	# 附身瞬间：一圈冲击环 + 轻震，像机体被"点燃"
+	Fx.ring(fx_parent, center(), 28.0)
+	get_tree().call_group("game", "impact", 3.5, Vector2.ZERO)
 	input = inp
 	velocity = Vector2(vel.x * 0.5, vel.y)
 	hp = CONTROL_HP
@@ -390,7 +399,7 @@ func _ram_step(delta: float, speed: float) -> void:
 					n.shield_hp = 0
 				n.take_hit(Vector2(facing, -0.4).normalized(), 2, "ram")
 				Fx.sparks(fx_parent, n.hurt_rect().get_center(), Vector2(facing, 0), 12, Neon.WHITE_HOT)
-				Audio.play("hit_heavy", -2.0, 0.8)
+				Audio.play("ram_hit", -1.0, 0.8)
 				get_tree().call_group("game", "impact", 5.0, Vector2(facing, 0))
 				TimeFx.hitstop(0.05)
 	else:
@@ -419,7 +428,7 @@ func _slam_impact(radius: float, power: int) -> void:
 	Fx.dust(fx_parent, at, 0.0, 14)
 	Fx.ring(fx_parent, at + Vector2(0, -4), radius)
 	Fx.sparks(fx_parent, at, Vector2.UP, 14, Color(2.2, 1.6, 0.8))
-	Audio.play("hit_heavy", 0.0, 0.6)
+	Audio.play("slam", 0.0 if controlled else -3.0)
 	get_tree().call_group("game", "shockwave", at)
 	get_tree().call_group("game", "impact", 8.0, Vector2.DOWN)
 	TimeFx.hitstop(0.06)

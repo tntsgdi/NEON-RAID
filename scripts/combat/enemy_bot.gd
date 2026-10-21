@@ -26,6 +26,8 @@ const LOCK_TIME := 0.12
 const MAX_HP := 4
 const SHIELD_HP := 3
 
+## 被重击打飞后的撞墙反弹窗口（秒）
+var _bounce_t := 0.0
 var kind := "gunner"
 var shielded := false
 var patrol_range := 50.0
@@ -185,6 +187,8 @@ func take_hit(dir: Vector2, power: int, hit_kind := "slash") -> int:
 		return 1
 	hp -= power
 	_flash = 0.1
+	# 重击打飞：0.6 秒内撞到墙会反弹回来（再掉 1 点血）
+	_bounce_t = 0.6 if power >= 2 else 0.0
 	var sx := signf(dir.x) if absf(dir.x) > 0.1 else float(-facing)
 	_recoil_v += sx * (7.0 + 4.0 * power)
 	velocity.x = sx * (150.0 + 80.0 * power)
@@ -199,9 +203,31 @@ func take_hit(dir: Vector2, power: int, hit_kind := "slash") -> int:
 		_t = 0.35
 	if rig != null:
 		rig.hit(dir.x, power, state == State.AIR)
+	get_tree().call_group("game", "combo_hit", self, power, hp <= 0)
 	if hp <= 0:
 		_die(dir)
 	return 1
+
+
+## 被重击打飞撞墙：弹回来、掉 1 点血、火花 + 闷响
+func _wall_bounce(vx: float) -> void:
+	_bounce_t = 0.0
+	velocity.x = -vx * 0.6
+	velocity.y = minf(velocity.y, -180.0)
+	state = State.AIR
+	var at := center() + Vector2(signf(vx) * 8.0, 0)
+	Fx.sparks(fx_parent, at, Vector2(-signf(vx), -0.3), 12, Color(2.6, 1.4, 0.7))
+	Fx.dust(fx_parent, at, -signf(vx), 4)
+	Audio.play("wall_bounce", -2.0)
+	TimeFx.hitstop(0.04)
+	get_tree().call_group("game", "impact", 4.5, Vector2(signf(vx), 0))
+	hp -= 1
+	_flash = 0.1
+	if rig != null:
+		rig.hit(-vx, 2, true)
+	get_tree().call_group("game", "combo_hit", self, 1, hp <= 0)
+	if hp <= 0:
+		_die(Vector2(-signf(vx), -0.4))
 
 
 func _parried(dir: Vector2) -> void:
@@ -231,16 +257,18 @@ func _die(dir: Vector2) -> void:
 	# 碎成零件：头、躯干、两条腿、武器各自带着冲量飞出去、落地弹跳
 	var base := global_position
 	var push := Vector2(signf(dir.x) if absf(dir.x) > 0.1 else -facing, -0.6).normalized()
-	FxPart.spawn(fx_parent, base + Vector2(0, -34), "rect", Vector2(10, 8), push * 260.0 + Vector2(0, -160), DARK, RED)
-	FxPart.spawn(fx_parent, base + Vector2(0, -21), "rect", Vector2(15, 17), push * 160.0, DARK, RED)
-	FxPart.spawn(fx_parent, base + Vector2(-3, -7), "rect", Vector2(3, 12), push * 120.0 + Vector2(-60, -80), RED, RED)
-	FxPart.spawn(fx_parent, base + Vector2(3, -7), "rect", Vector2(3, 12), push * 140.0 + Vector2(60, -90), RED, RED)
+	var v := "_p" if controlled else ""
+	FxPart.spawn_sprite(fx_parent, base + Vector2(0, -34), "trooper/head" + ("_horn" if kind == "rusher" else "") + v, push * 300.0 + Vector2(0, -200), Vector2(8, 7))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(0, -21), "trooper/torso" + v, push * 180.0 + Vector2(0, -60), Vector2(12, 12))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(-3, -9), "trooper/thigh" + v, push * 120.0 + Vector2(-80, -140), Vector2(4, 8))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(3, -5), "trooper/shin" + v, push * 140.0 + Vector2(80, -150), Vector2(4, 8))
+	FxPart.spawn_sprite(fx_parent, base + Vector2(-facing * 4, -22), "trooper/arm" + v, push * 200.0 + Vector2(0, -220), Vector2(4, 6))
 	if kind != "rusher":
-		FxPart.spawn(fx_parent, base + Vector2(facing * 10, -24), "rect", Vector2(10, 3), push * 300.0 + Vector2(0, -120), METAL, METAL)
+		FxPart.spawn_sprite(fx_parent, base + Vector2(facing * 10, -24), "trooper/" + ("burst" if kind == "burst" else "rifle") + v, push * 340.0 + Vector2(0, -140), Vector2(10, 3))
 	Fx.debris(fx_parent, center(), dir, 12, RED)
 	Fx.sparks(fx_parent, center(), dir, 18, Color(2.6, 1.0, 0.7))
 	Fx.flash(fx_parent, center(), Color(2.8, 0.9, 0.6), 22.0)
-	Audio.play("break", -2.0)
+	Audio.play("kill", -2.0)
 	get_tree().call_group("game", "shockwave", center())
 	died.emit(self)
 	queue_free()
@@ -290,7 +318,14 @@ func _physics_process(delta: float) -> void:
 			if is_on_floor() and velocity.y >= 0.0:
 				state = State.STAGGER
 				_t = 0.25
+	var vx := velocity.x
 	move_and_slide()
+	if _bounce_t > 0.0:
+		_bounce_t -= delta
+		if is_on_wall() and absf(vx) > 160.0:
+			_wall_bounce(vx)
+			if not alive():
+				return
 	_crowd(delta)
 	_update_rig(delta)
 	queue_redraw()
@@ -418,6 +453,9 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	# 异体生长：一圈青色碎晶炸开
 	Fx.sparks(fx_parent, center(), Vector2.UP, 14, Color(1.0, 2.2, 2.4))
 	Audio.play("mut_grow", -2.0)
+	# 附身瞬间：一圈冲击环 + 轻震，像机体被"点燃"
+	Fx.ring(fx_parent, center(), 28.0)
+	get_tree().call_group("game", "impact", 3.5, Vector2.ZERO)
 	_flash = 0.0
 	state = State.PATROL
 	remove_from_group("enemy")
@@ -582,7 +620,13 @@ func _abilities(aim: Vector2, delta: float) -> void:
 					var before := _rail_charge
 					_rail_charge = minf(_rail_charge + delta, RAIL_MAX)
 					if before < RAIL_MAX and _rail_charge >= RAIL_MAX:
-						Audio.play("ui_ready", -4.0, 0.8)
+						Audio.play("rail_full", -2.0)
+						Fx.ring(fx_parent, gun_pos(), 22.0)
+						Fx.flash(fx_parent, gun_pos(), Color(1.4, 2.6, 2.8), 12.0)
+						get_tree().call_group("game", "impact", 4.0, Vector2.ZERO)
+					elif _rail_charge >= RAIL_MAX and int(_rail_charge * 1000.0) % 100 < int(delta * 1000.0) + 1:
+						# 蓄满后握着：每 0.1 秒轻震一下，枪口嗡嗡发抖
+						get_tree().call_group("game", "impact", 1.4, Vector2.ZERO)
 					if int(_rail_charge * 30.0) % 3 == 0 and _rail_charge > 0.15:
 						Fx.sparks(fx_parent, gun_pos(), aim, 1, Color(1.0, 2.2, 2.4))
 				else:
@@ -619,15 +663,25 @@ func _rail(aim: Vector2, power: int) -> void:
 	var hit := get_world_2d().direct_space_state.intersect_ray(q)
 	if not hit.is_empty():
 		to = hit.position
+	var hits := 0
 	for n in get_tree().get_nodes_in_group("hittable"):
 		if n == self or (n.has_method("alive") and not n.alive()):
 			continue
 		if Bullet._segment_hits(from, to, n.hurt_rect().grow(3.0)):
 			n.take_hit(aim, power, "rail")
+			hits += 1
 	RailFx.spawn(fx_parent, from, to, power)
 	Audio.play("rail_fire", 0.0)
-	get_tree().call_group("game", "impact", 3.0 + power, -aim)
-	TimeFx.hitstop(0.04)
+	if hits > 0:
+		Audio.play("rail_hit", -1.0 if power >= 4 else -4.0)
+	Fx.flash(fx_parent, from, Color(1.4, 2.4, 2.6), 6.0 + 1.5 * power)
+	Fx.flash(fx_parent, to, Color(1.4, 2.4, 2.6), 6.0 + 1.5 * power)
+	# 震屏 4.9 封顶：不到 5 就不会再叠一层色差，画面不被红蓝错位糊掉
+	get_tree().call_group("game", "impact", minf(3.0 + power, 4.9), -aim)
+	get_tree().call_group("game", "aberrate", 0.6 * power)
+	if power >= 4:
+		get_tree().call_group("game", "shockwave", to)
+	TimeFx.hitstop(0.04 if power < 4 else 0.07)
 	rig.fire()
 	_recoil_v -= facing * 14.0
 	_weapon_cd = 0.45
@@ -768,7 +822,7 @@ func _ram(delta: float) -> void:
 			_ram_hit[n] = true
 			n.take_hit(Vector2(facing, -0.3).normalized(), 2, "slash")
 			Fx.sparks(fx_parent, n.hurt_rect().get_center(), Vector2(facing, 0), 10, Neon.WHITE_HOT)
-			Audio.play("hit_heavy", -3.0)
+			Audio.play("ram_hit", -2.0)
 			get_tree().call_group("game", "shockwave", n.hurt_rect().get_center())
 			TimeFx.hitstop(0.03)
 	var bonk := is_on_wall()

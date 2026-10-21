@@ -6,7 +6,7 @@ ceiling_db = -0.5
 
 [sub_resource type="AudioEffectCompressor" id="2"]
 resource_name = "Compressor"
-threshold = -14.0
+threshold = -10.0
 ratio = 3.0
 attack_us = 2000.0
 release_ms = 120.0

@@ -26,11 +26,33 @@ SFX = {
     "swing_2": {"cat": "whoosh", "lp": 4000, "layers": [("Action Swish_HW 02", 2.54, 0.29, 0), ("@ring", 0.0, 0.22, -11)]},
     "swing_3": {"cat": "whoosh", "lp": 4000, "layers": [("Seq 2.1 whoosh #1 96 HK1", 0.01, 0.22, 0), ("@ring", 0.0, 0.25, -9)]},
     "swing_heavy": {"cat": "whoosh", "lp": 4500, "layers": [("Action Swish_HW 02", 1.07, 0.29, 0), ("Fast Action Swish_HW 05", 0.11, 0.35, -4), ("@ring", 0.0, 0.35, -7)]},
-    # 命中机器人：3 毫秒的起音 click + 功夫片式打击 + 金属敲击
-    "hit_1": {"cat": "hit", "layers": [("@click", 0.0, 0.01, -2), ("Seq 2.27 Hit #1 96 HK1", 0.10, 0.23, 0), ("METLImpt_Metal Old File Impact Tap", 0.12, 0.30, -8)]},
-    "hit_2": {"cat": "hit", "layers": [("@click", 0.0, 0.01, -2), ("Seq 2.1 Hit #1 96 HK1", 0.07, 0.26, 0), ("METLImpt_Metal Old File Impact Tap", 0.12, 0.30, -8)]},
-    "hit_heavy": {"cat": "hit", "layers": [("@click", 0.0, 0.01, 0), ("Hit Impact Hard Metal Scrap Debris_UC 01", 0.21, 0.47, 0), ("Seq 2.1 Hit #3 96 HK1", 0.08, 0.29, -3)]},
-    "break": {"cat": "hit", "layers": [("demolisher_metal_impact_002", 0.0, 1.0, 0), ("glass_impact_break_small_014", 0.0, 0.5, -10)]},
+    # 命中机器人（分层）：起音 click + 功夫片式打击 + 金属撞击 + 电火花噼啪 + 次低音闷响
+    "hit_1": {"cat": "hit", "layers": [("@click", 0.0, 0.01, -2), ("Seq 2.27 Hit #1 96 HK1", 0.10, 0.23, 0), ("BC0258_cinematic_metal_impact_052", 0.0, 0.25, -7),
+                                       ("sizzling_crackling_006", 0.3, 0.12, -14), ("@thump", 0.0, 0.14, -5)]},
+    "hit_2": {"cat": "hit", "layers": [("@click", 0.0, 0.01, -2), ("Seq 2.1 Hit #1 96 HK1", 0.07, 0.26, 0), ("BC0258_cinematic_metal_impact_069", 0.0, 0.25, -7),
+                                       ("sizzling_crackling_006", 0.8, 0.12, -14), ("@thump", 0.0, 0.14, -5)]},
+    "hit_3": {"cat": "hit", "layers": [("@click", 0.0, 0.01, -2), ("Seq 2.27 Hit #1 96 HK1", 0.10, 0.23, -1), ("BC0258_cinematic_metal_impact_050", 0.0, 0.25, -6),
+                                       ("sizzling_crackling_006", 1.4, 0.12, -13), ("@thump", 0.0, 0.14, -5)]},
+    "hit_heavy": {"cat": "hit", "rms": -15.0, "layers": [("@click", 0.0, 0.01, 0), ("Hit Impact Hard Metal Scrap Debris_UC 01", 0.21, 0.47, 0), ("steel bulkhead hit, low 01", 0.0, 0.5, -4),
+                                           ("sizzling_crackling_006", 2.0, 0.2, -12), ("@thump", 0.0, 0.25, -2)]},
+    # 终结一击：电影感重击 + 下坠次低音 + 剑鸣 + 电火花
+    "finisher": {"cat": "hit", "rms": -11.0, "layers": [("@click", 0.0, 0.01, 0), ("@crack", 0.0, 0.08, -4), ("DSGNBoom_Cinematic Hit 2", 0.0, 0.9, 0), ("BC0294_modern_cinematic_impact_022", 0.0, 0.7, -3),
+                                          ("Sub Drop 2", 0.0, 0.9, -6), ("@ring", 0.0, 0.4, -8), ("sizzling_crackling_006", 2.6, 0.3, -12)]},
+    "break": {"cat": "hit", "layers": [("demolisher_metal_impact_002", 0.0, 1.0, 0), ("glass_impact_break_small_014", 0.0, 0.5, -10), ("Impact_Boom_Distorted_02", 0.0, 0.6, -8), ("@thump", 0.0, 0.3, -4)]},
+    # 击毁：金属碎裂 + 零件四散的叮当 + 电火花
+    "kill": {"cat": "hit", "rms": -14.0, "layers": [("@crack", 0.0, 0.06, -8), ("@click", 0.0, 0.01, -2), ("BC0258_cinematic_metal_anvil_impact_005", 0.0, 0.5, 0), ("glass_impact_break_small_014", 0.0, 0.4, -9),
+                                      ("sizzling_crackling_006", 1.9, 0.35, -10), ("@thump", 0.0, 0.25, -3)]},
+    # 撞墙反弹：沉闷的钢板撞击
+    "wall_bounce": {"cat": "hit", "rms": -14.0, "layers": [("@crack", 0.0, 0.06, -3), ("BC0258_cinematic_metal_impact_069", 0.0, 0.2, -6), ("steel bulkhead hit, low 01", 0.0, 0.4, 0), ("@thump", 0.0, 0.2, -3)]},
+    # 异体专属命中
+    "slam": {"cat": "hit", "rms": -13.0, "layers": [("@crack", 0.0, 0.08, -3), ("BC0258_cinematic_metal_impact_050", 0.0, 0.3, -5), ("@click", 0.0, 0.01, 0), ("Low Boom 3", 0.0, 1.0, 0), ("Impact_Boom_Distorted_02", 0.0, 0.7, -3), ("steel bulkhead hit, low 01", 0.0, 0.5, -5)]},
+    "ram_hit": {"cat": "hit", "rms": -13.0, "layers": [("@crack", 0.0, 0.06, -3), ("BC0258_cinematic_metal_impact_052", 0.0, 0.25, -5), ("@click", 0.0, 0.01, 0), ("PUNCH_PERCUSSIVE_HEAVY_06", 0.0, 0.35, 0), ("steel bulkhead hit, low 01", 0.0, 0.4, -4), ("@thump", 0.0, 0.2, -3)]},
+    "rail_hit": {"cat": "hit", "layers": [("@click", 0.0, 0.01, 0), ("@zap", 0.0, 0.25, -2), ("sizzling_crackling_006", 0.5, 0.3, -6), ("BC0258_cinematic_metal_impact_050", 0.0, 0.3, -5)]},
+    "disc_hit": {"cat": "hit", "layers": [("@click", 0.0, 0.01, 0), ("Swell_Metallic Ring_02", 0.0, 0.5, -4), ("BC0258_cinematic_metal_impact_069", 0.0, 0.3, 0)]},
+    # 长矛蓄满 / 过载倒计时 / 过载爆炸
+    "rail_full": {"cat": "ui", "rms": -17.0, "layers": [("@blip_hi", 0.0, 0.09, 0), ("Swell_Metallic Ring_02", 0.0, 0.4, -6)]},
+    "overload_alarm": {"cat": "ui", "rms": -14.0, "layers": [("@alarm", 0.0, 0.16, 0)]},
+    "overload": {"cat": "hit", "rms": -12.0, "layers": [("@crack", 0.0, 0.08, -4), ("@click", 0.0, 0.01, 0), ("BC0294_modern_cinematic_impact_boom_003", 0.0, 1.2, 0), ("sizzling_crackling_006", 0.0, 0.6, -6), ("Sub Drop 2", 0.0, 0.9, -5)]},
     # 移动：只留短促、低调的声音
     "dash": {"cat": "whoosh", "layers": [("WHSH_InsJ_Whooshing_Low_Double_01-01", 0.04, 0.19, 0)]},
     # 界面音：短促、偏高频、比战斗音低（ui 类别 -24 dB）
@@ -107,6 +129,28 @@ def synth(kind, dur):
         ph = 2 * np.pi * np.cumsum(f) / RATE
         x = np.sign(np.sin(ph)) * 0.6 + np.random.default_rng(4).standard_normal(n) * 0.25
         return (x * np.exp(-t * 10)).astype(np.float32)
+    if kind == "@thump":
+        # 次低音闷响：90 → 45 Hz 下滑的正弦，给每一下打击"肉感"
+        f = 45 + 45 * np.exp(-t * 30)
+        x = np.sin(2 * np.pi * np.cumsum(f) / RATE)
+        return (np.tanh(x * 1.6) * np.exp(-t * 14) * np.minimum(t / 0.002, 1)).astype(np.float32)
+    if kind == "@crack":
+        # 金属"咔"：1.5–3 kHz 带通噪声 + 2.4 kHz 衰减正弦，给低频重击一个小喇叭也放得出来的头
+        from scipy.signal import butter, sosfilt
+        noise = np.random.default_rng(11).standard_normal(n)
+        x = sosfilt(butter(2, [1500, 3200], "band", fs=RATE, output="sos"), noise) * 2.0
+        x += np.sin(2 * np.pi * 2400 * t) * 0.6
+        return (x * np.exp(-t * 60) * np.minimum(t / 0.001, 1)).astype(np.float32)
+    if kind == "@alarm":
+        # 过载警报：两声短促的方波哔（1.3 / 1.0 kHz）
+        x = np.zeros(n)
+        for k, (f, at) in enumerate([(1300, 0.0), (1000, 0.08)]):
+            i = int(at * RATE)
+            m = min(n - i, int(0.065 * RATE))
+            tt = np.arange(m) / RATE
+            tone = np.sign(np.sin(2 * np.pi * f * tt)) * 0.5 + np.sin(2 * np.pi * 2 * f * tt) * 0.25 + np.sin(2 * np.pi * 3 * f * tt) * 0.15
+            x[i:i + m] += tone * np.minimum(tt / 0.002, 1) * np.minimum((0.065 - tt) / 0.005, 1)
+        return x.astype(np.float32)
     if kind == "@sweep":
         # 面板展开：500→1800 Hz 上扫，带轻微噪声质感
         f = 500 + 1300 * (t / max(dur, 1e-3)) ** 0.7
@@ -150,15 +194,17 @@ def build(recipe):
         mix[: len(p)] += p
     if recipe.get("lp"):
         mix = lowpass(mix, recipe["lp"])
+    target = recipe.get("rms", CAT_RMS[recipe["cat"]])
     fade = min(len(mix), int(0.04 * RATE))
     mix[-fade:] *= np.linspace(1.0, 0.0, fade)
     # 按类别统一响度：取开头 250 ms 和整段 RMS 中较大的（长尾巴的低频也算进去）；峰值不超过 -1 dBFS
     head = mix[: int(0.25 * RATE)]
     rms = max(np.sqrt(np.mean(head ** 2)), np.sqrt(np.mean(mix ** 2))) + 1e-9
-    mix = mix * (10 ** (CAT_RMS[recipe["cat"]] / 20) / rms)
-    peak = np.abs(mix).max()
-    if peak > 10 ** (-1 / 20):
-        mix *= 10 ** (-1 / 20) / peak
+    mix = mix * (10 ** (target / 20) / rms)
+    # 峰值不超过 -1 dBFS：用 tanh 软限幅压瞬态尖峰（整体缩小会把终结、冲撞的响度档位吃掉）
+    lim = 10 ** (-1 / 20)
+    if np.abs(mix).max() > lim:
+        mix = np.tanh(mix / lim) * lim
     return mix.astype(np.float32)
 
 

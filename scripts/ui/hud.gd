@@ -49,6 +49,12 @@ var _toast_t := 0.0
 var _term: Label
 var _term_t := 0.0
 var _t := 0.0
+## 连击数、显示强度（0..1，断连时淡出）、弹跳（每次命中置 1，终结一击 1.6）
+var combo := 0
+var combo_k := 0.0
+var combo_pop := 0.0
+## 连击剩余时间比例（数字下面那条线缩短）
+var combo_left := 0.0
 ## 意识负荷（0..1，只在敌人壳里显示）
 var load_k := 0.0
 ## 夺壳冷却剩余比例（1 = 刚夺完）；冷却结束那一刻"叮"一声
@@ -194,6 +200,7 @@ func _process(delta: float) -> void:
 		_chip[i] = maxf(_chip[i] - real / 0.4, 0.0)
 		_fill[i] = minf(_fill[i] + real / 0.25, 1.0)
 	_energy_shown = lerpf(_energy_shown, _energy, 1.0 - exp(-18.0 * real))
+	combo_pop = maxf(combo_pop - real * 6.0, 0.0)
 	if _card_time > 0.0:
 		_card_time -= real
 		_card_age += real
@@ -283,6 +290,30 @@ func _draw() -> void:
 	_draw_section()
 	_draw_tip()
 	_draw_card()
+	_draw_combo()
+
+
+## 连击计数：右上角的大数字，每次命中弹一下；10 连以上变金、25 连以上变红热；下面一条线是剩余时间
+func _draw_combo() -> void:
+	if combo_k <= 0.0 or combo < 2:
+		return
+	var font := _section.get_theme_font("font")
+	var col := C_LINE if combo < 10 else (Color(2.2, 1.7, 0.5) if combo < 25 else Color(2.4, 0.7, 0.5))
+	var txt := str(combo)
+	var fs := 20
+	var w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var anchor := Vector2(626, 74)
+	var sc := 1.0 + 0.35 * minf(combo_pop, 1.6)
+	draw_set_transform(anchor, -0.06 * combo_pop, Vector2(sc, sc))
+	var a := combo_k
+	draw_string_outline(font, Vector2(-w, 0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.8 * a))
+	draw_string(font, Vector2(-w, 0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(col, a).lerp(Color(2.4, 2.4, 2.4, a), clampf(combo_pop - 0.5, 0.0, 1.0)))
+	draw_set_transform(Vector2.ZERO)
+	var lw := font.get_string_size(tr("HUD_COMBO"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7).x
+	draw_string(font, anchor + Vector2(-lw, 10), tr("HUD_COMBO"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(C_DIM, a))
+	var bw := 46.0
+	draw_rect(Rect2(anchor + Vector2(-bw, 14), Vector2(bw, 1)), Color(C_DIM, 0.4 * a))
+	draw_rect(Rect2(anchor + Vector2(-bw * combo_left, 14), Vector2(bw * combo_left, 1)), Color(col, a))
 
 
 func _draw_module() -> void:

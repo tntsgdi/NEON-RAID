@@ -112,6 +112,7 @@ func take_hit(dir: Vector2, power: int, _kind := "slash") -> int:
 	if _mode == "aim" or _mode == "fire":
 		_mode = "cool"
 		_t = 0.7
+	get_tree().call_group("game", "combo_hit", self, power, hp <= 0)
 	if hp <= 0:
 		_die(dir)
 	return 1
@@ -129,12 +130,14 @@ func _die(dir: Vector2) -> void:
 	remove_from_group("possessable")
 	remove_from_group("controlled")
 	var c := CYAN if controlled else RED
-	FxPart.spawn(fx_parent, global_position, "rect", Vector2(12, 5), dir * 200.0 + Vector2(0, -120), Color(0.15, 0.08, 0.1), c)
-	FxPart.spawn(fx_parent, global_position + Vector2(-6, -4), "rect", Vector2(6, 2), Vector2(-160, -180), c, c)
-	FxPart.spawn(fx_parent, global_position + Vector2(6, -4), "rect", Vector2(6, 2), Vector2(160, -180), c, c)
+	var v := "_p" if controlled else ""
+	FxPart.spawn_sprite(fx_parent, global_position, "drone/hull" + v, dir * 220.0 + Vector2(0, -140), Vector2(12, 6))
+	FxPart.spawn_sprite(fx_parent, global_position + Vector2(0, 4), "drone/pod" + v, dir * 160.0 + Vector2(0, -60), Vector2(6, 5))
+	FxPart.spawn_sprite(fx_parent, global_position + Vector2(-6, -4), "drone/rotor0", Vector2(-180, -220), Vector2(8, 2))
+	FxPart.spawn_sprite(fx_parent, global_position + Vector2(6, -4), "drone/rotor2", Vector2(180, -220), Vector2(8, 2))
 	Fx.sparks(fx_parent, global_position, dir, 14, Color(2.6, 1.0, 0.7))
 	Fx.flash(fx_parent, global_position, Color(2.8, 0.9, 0.6), 16.0)
-	Audio.play("break", -4.0, 1.25)
+	Audio.play("kill", -3.0, 1.2)
 	get_tree().call_group("game", "shockwave", global_position)
 	died.emit(self)
 	queue_free()
@@ -220,6 +223,9 @@ func take_control(inp: PlayerInput, vel: Vector2) -> void:
 	mut_k = 0.0
 	Fx.sparks(fx_parent, global_position, Vector2.UP, 12, Color(1.0, 2.2, 2.4))
 	Audio.play("mut_grow", -2.0, 1.2)
+	# 附身瞬间：一圈冲击环 + 轻震，像机体被"点燃"
+	Fx.ring(fx_parent, center(), 28.0)
+	get_tree().call_group("game", "impact", 3.5, Vector2.ZERO)
 	remove_from_group("enemy")
 	remove_from_group("hittable")
 	remove_from_group("possessable")
@@ -379,8 +385,9 @@ func _update_fling(delta: float) -> void:
 			if is_instance_valid(_flung) and _flung.has_method("take_hit"):
 				_flung.take_hit(-d, 2, "slash")
 			Fx.sparks(fx_parent, n.hurt_rect().get_center(), d, 14, Neon.WHITE_HOT)
-			Audio.play("hit_heavy", -2.0, 0.9)
+			Audio.play("ram_hit", -1.0, 1.1)
 			get_tree().call_group("game", "shockwave", n.hurt_rect().get_center())
+			get_tree().call_group("game", "impact", 5.0, d)
 			TimeFx.hitstop(0.05)
 			if not is_instance_valid(_flung):
 				return

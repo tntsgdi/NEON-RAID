@@ -25,6 +25,12 @@ BEAT = 60.0 / BPM
 BAR = BEAT * 4
 BARS = 64
 LENGTH = BAR * BARS
+## 主音（MIDI）；各区域配乐通过 configure() 改调性、速度、和声、鼓型
+KEY = 50
+## 鼓型："drive" 正常、"half" 半拍子重鼓（机库）、"floor" 一直四拍全开（封锁线）
+DRUMS = "drive"
+## explore 层是否叠一层持续的十六分琶音（地下管廊的悬疑感）
+ARP_EXPLORE = False
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "assets", "music")
 rng = np.random.default_rng(7)
@@ -46,7 +52,7 @@ def chord_at(bar):
     sec = SECTIONS[bar // 16]
     phrase = (bar // 4) % 4
     if bar % 4 == 3 and phrase in (1, 3) and sec in "AB":
-        return sec, (45, "M")
+        return sec, (KEY - 5, "M")
     return sec, PHRASES[sec][bar % 4]
 
 
@@ -256,8 +262,8 @@ def motif_notes(phrase_start_bar):
     for beat, iv, length in motif:
         bar = phrase_start_bar + int(beat // 4)
         _, (root, kind) = chord_at(bar % BARS)
-        m = 50 + iv  # 以 D 为基准，保证旋律在调内
-        while (m - 50) % 12 not in scale:
+        m = KEY + iv  # 以主音为基准，保证旋律在调内
+        while (m - KEY) % 12 not in scale:
             m -= 1
         out.append((phrase_start_bar * BAR + beat * BEAT, m + 12, length))
     return out
@@ -284,6 +290,11 @@ def explore():
         tr.place(kick(), t0, 0.3 * g)
         if sec == "C":
             tr.place(kick(), t0 + 2 * BEAT, 0.22)
+        if ARP_EXPLORE:
+            ch = triad(root + 24, kind)
+            arp = [ch[0], ch[2], ch[1] + 12, ch[2], ch[0] + 12, ch[2], ch[1], ch[2]]
+            for s in range(16):
+                tr.place(pluck(arp[s % 8], BEAT / 4, 2200 + 800 * (sec == "C")), t0 + s * BEAT / 4, 0.07 * g, 0.5 if s % 2 else -0.5)
     # 主旋律动机：B、C 段每句都弹，A、D 段隔句弹
     for phrase in range(BARS // 4):
         sec = SECTIONS[phrase // 4]
@@ -305,8 +316,11 @@ def combat():
         sec, (root, kind) = chord_at(b)
         g = LEVEL[sec]
         t0 = b * BAR
-        half = sec == "D"  # 回落段：半拍子
-        kicks = [0, 2] if half else ([0, 1, 2, 3] if sec != "A" or b % 16 >= 8 else [0, 2])
+        half = sec == "D" or DRUMS == "half"  # 回落段 / 机库：半拍子
+        full = sec != "A" or b % 16 >= 8 or DRUMS == "floor"
+        kicks = [0, 2] if half else ([0, 1, 2, 3] if full else [0, 2])
+        if DRUMS == "half" and sec != "D":
+            kicks = [0, 1.5, 2.75]  # 机库：沉重的切分底鼓
         for q in kicks:
             tr.place(kick(), t0 + q * BEAT, 0.9 * g)
             i = int((t0 + q * BEAT) * SR) % tr.n
@@ -314,7 +328,7 @@ def combat():
             seg = 1.0 - 0.7 * np.exp(-np.arange(k) / (0.06 * SR))
             j = min(tr.n, i + k)
             duck[i:j] = np.minimum(duck[i:j], seg[:j - i])
-        if sec != "A" or b % 16 >= 8:
+        if full:
             for q in ([2] if half else [1, 3]):
                 tr.place(snare(), t0 + q * BEAT, 0.6 * g, 0.05)
         v = variant(b)
@@ -364,7 +378,7 @@ def peak():
         tr.place(clap(), t0 + BEAT, 0.35 * g, -0.1)
         tr.place(clap(), t0 + 3 * BEAT, 0.35 * g, -0.1)
         if b % 4 == 3:
-            for s, m in enumerate([50, 47, 45, 43]):
+            for s, m in enumerate([KEY, KEY - 3, KEY - 5, KEY - 7]):
                 tr.place(tom(m), t0 + 3 * BEAT + s * BEAT / 4, 0.45, -0.5 + s * 0.3)
     for phrase in range(BARS // 4):
         sec = SECTIONS[phrase // 4]
@@ -415,7 +429,7 @@ def sting_wave():
     tr.place(lp(riser, 3000) * (t / 1.5) ** 1.5 * 0.35, 0.0)
     tr.place(kick(), 1.5, 1.0)
     tr.place(crash(), 1.5, 0.5)
-    tr.place(stab(triad(50, "m"), 0.6), 1.5, 0.35)
+    tr.place(stab(triad(KEY, "m"), 0.6), 1.5, 0.35)
     return tr
 
 
@@ -455,9 +469,56 @@ def write(name, tr, peak_level=0.89, boost=False):
     print("%-8s %.1fs -> %s" % (name, tr.n / SR, ogg))
 
 
+# ------------------------------------------------------------------ 各区域配乐
+# 第 1 关五个区域各一套（文件名前缀 rN_，Music.play_set("rN") 切换）：
+#   r1 001 夜里出发：E 小调 118，轻     r2 002 检查站：D 小调 128（原曲）
+#   r3 003 机库：C 小调 104，半拍子重鼓  r4 004 管廊：F# 小调 122，持续琶音悬疑
+#   r5 005 封锁线：A 小调 140，四拍全开
+def _ph(k):
+    """以主音 k 为准的四段和弦（音程相对 D 小调原曲平移）。"""
+    sh = k - 50
+    base = {"A": [(50, "m"), (46, "M"), (53, "M"), (48, "M")],
+            "C": [(46, "M"), (48, "M"), (50, "m"), (45, "M")],
+            "D": [(43, "m"), (50, "m"), (46, "M"), (45, "M")]}
+    base["B"] = base["A"]
+    return {sec: [(r + sh, kind) for r, kind in base[sec]] for sec in base}
+
+
+STYLES = {
+    "r1": {"key": 52, "bpm": 118, "drums": "drive", "arp": False, "level": {"A": 0.6, "B": 0.78, "C": 0.92, "D": 0.6}},
+    # r2 = 默认那套（explore/combat/peak.ogg），这里留着参数只作说明
+    "r2": {"key": 50, "bpm": 128, "drums": "drive", "arp": False, "level": {"A": 0.72, "B": 0.9, "C": 1.0, "D": 0.68}},
+    "r3": {"key": 48, "bpm": 104, "drums": "half", "arp": False, "level": {"A": 0.8, "B": 0.95, "C": 1.0, "D": 0.72}},
+    "r4": {"key": 54, "bpm": 122, "drums": "drive", "arp": True, "level": {"A": 0.7, "B": 0.85, "C": 0.98, "D": 0.66}},
+    "r5": {"key": 45, "bpm": 140, "drums": "floor", "arp": False, "level": {"A": 0.88, "B": 0.95, "C": 1.0, "D": 0.82}},
+}
+
+
+def configure(st):
+    global KEY, BPM, BEAT, BAR, LENGTH, PHRASES, LEVEL, DRUMS, ARP_EXPLORE
+    KEY = st["key"]
+    BPM = float(st["bpm"])
+    BEAT = 60.0 / BPM
+    BAR = BEAT * 4
+    LENGTH = BAR * BARS
+    PHRASES = _ph(KEY)
+    LEVEL = st["level"]
+    DRUMS = st["drums"]
+    ARP_EXPLORE = st["arp"]
+
+
 if __name__ == "__main__":
-    write("explore", explore(), 0.8, True)
-    write("combat", combat(), 0.89, True)
-    write("peak", peak(), 0.75)
-    write("sting_wave", sting_wave(), 0.85)
-    write("sting_clear", sting_clear(), 0.8)
+    import sys
+    only = sys.argv[1:]
+    if not only:
+        write("explore", explore(), 0.8, True)
+        write("combat", combat(), 0.89, True)
+        write("peak", peak(), 0.75)
+        write("sting_wave", sting_wave(), 0.85)
+        write("sting_clear", sting_clear(), 0.8)
+        only = [k for k in STYLES if k != "r2"]  # r2 和默认那套相同，游戏里直接用默认文件
+    for name in only:
+        configure(STYLES[name])
+        write(name + "_explore", explore(), 0.8, True)
+        write(name + "_combat", combat(), 0.89, True)
+        write(name + "_peak", peak(), 0.75)

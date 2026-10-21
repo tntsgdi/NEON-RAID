@@ -49,6 +49,11 @@ var _splash: CPUParticles2D
 var _env: Environment
 var _wind: AudioStreamPlayer
 var _zoom_pulse := 0.0
+## 连击：2.4 秒内持续打中就累加，挨打清零
+var combo := 0
+var _combo_t := 0.0
+## 终结一击冷却（真实秒）：太频繁会把节奏切碎
+var _finisher_cd := 0.0
 var settings_panel: SettingsPanel
 ## 本局技巧统计（评级用）
 var stats := {"hits": 0, "deflect": 0, "parry": 0, "perfect_dodge": 0}
@@ -289,6 +294,38 @@ func env_text(text: String) -> void:
 	hud.terminal(text)
 
 
+## 任何敌人被打中都报到这里：连击计数；击杀时加停顿，重击击杀 / 清掉附近最后一个敌人 = 终结一击（慢镜 + 重音）
+func combo_hit(n: Node2D, power: int, killed: bool) -> void:
+	if n.get("controlled") == true:
+		return
+	combo += 1
+	_combo_t = 2.4
+	hud.combo_pop = 1.0
+	# 连击回报：附身时每满 10 连击，意识负荷退 2 秒
+	if combo % 10 == 0:
+		controller.relieve_load(2.0)
+	if not killed:
+		return
+	var last := true
+	var at: Vector2 = n.global_position
+	for o in get_tree().get_nodes_in_group("enemy"):
+		if o != n and o.get("controlled") != true and (not o.has_method("alive") or o.alive()) and absf(o.global_position.x - at.x) < 320.0 and absf(o.global_position.y - at.y) < 200.0:
+			last = false
+			break
+	if _finisher_cd <= 0.0 and (power >= 3 or (last and combo >= 3)):
+		_finisher_cd = 3.0
+		TimeFx.hitstop(0.09 * Settings.v.hitstop)
+		TimeFx.slowmo(0.4, 0.3, "kill")
+		Audio.play("finisher", -1.0)
+		Music.duck(8.0, 0.7)
+		_on_impact(8.0, Vector2.ZERO)
+		_zoom_pulse = 0.06
+		hud.combo_pop = 1.6
+	else:
+		TimeFx.hitstop(0.05 * Settings.v.hitstop)
+		_on_impact(4.0, Vector2.ZERO)
+
+
 ## 其他机体（重装机等）也能震屏
 func impact(strength: float, dir: Vector2) -> void:
 	_on_impact(strength, dir)
@@ -343,6 +380,8 @@ func load_level(kind: String, index := 0) -> void:
 		level = range_
 	world.add_child(level)
 	world.move_child(level, 1)  # 在远景之上、机体之下
+	# 第 1 关每个区域一套配乐；训练场、靶场用默认那套
+	Music.play_set("r%d" % (index + 1) if region != null else "")
 	# 第 1 关的区域有自己的正式像素背景；训练场继续用灰盒远景
 	world.get_node("Backdrop").visible = region == null
 	_foreground.visible = region == null
@@ -426,8 +465,8 @@ func _tip(key: String) -> void:
 
 func _on_impact(strength: float, dir: Vector2) -> void:
 	var s: float = strength * Tuning.v.shake * Settings.v.shake
-	if strength >= 5.0:
-		aberrate(strength * 0.9)
+	if strength >= 7.0:
+		aberrate(strength * 0.7)
 	if dir == Vector2.ZERO:
 		_shake = maxf(_shake, s)
 	else:
@@ -532,7 +571,17 @@ func _process(delta: float) -> void:
 		return
 	if player.hp < _last_hp:
 		stats.hits += _last_hp - player.hp
+		combo = 0
 	_last_hp = player.hp
+	var real_dt := delta / maxf(Engine.time_scale, 0.0001)
+	_finisher_cd = maxf(_finisher_cd - real_dt, 0.0)
+	if _combo_t > 0.0:
+		_combo_t -= real_dt
+		if _combo_t <= 0.0:
+			combo = 0
+	hud.combo = combo
+	hud.combo_k = clampf(_combo_t / 0.4, 0.0, 1.0) if combo >= 2 else 0.0
+	hud.combo_left = clampf(_combo_t / 2.4, 0.0, 1.0)
 	if Input.is_action_just_pressed("restart"):
 		restart()
 	if Input.is_action_just_pressed("tuning"):

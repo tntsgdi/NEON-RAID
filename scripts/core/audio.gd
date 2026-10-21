@@ -4,7 +4,8 @@ extends Node
 
 const NAMES := [
 	"swing_1", "swing_2", "swing_3", "swing_heavy",
-	"hit_1", "hit_2", "hit_heavy", "break",
+	"hit_1", "hit_2", "hit_3", "hit_heavy", "finisher", "break", "kill", "wall_bounce",
+	"slam", "ram_hit", "rail_hit", "disc_hit", "rail_full", "overload_alarm", "overload",
 	"dash", "walljump", "land", "slide",
 	"shot", "enemy_shot", "deflect", "overclock", "hurt", "charge", "shield_block",
 	"sprint", "possess",

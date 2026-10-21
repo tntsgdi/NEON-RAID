@@ -27,6 +27,7 @@ var flow: SoulFlow
 var load_k := 0.0
 var _load := 0.0
 var _smoke_t := 0.0
+var _alarm_t := 0.0
 
 
 func setup(base_shell: Player, world_node: Node2D) -> void:
@@ -219,10 +220,18 @@ func _update_load(delta: float) -> void:
 	if cap <= 0.0:
 		_load = 0.0
 		load_k = 0.0
+		_alarm_t = 0.0
 		return
 	_load += delta
 	load_k = clampf(_load / cap, 0.0, 1.0)
 	if load_k > 0.75:
+		_alarm_t -= delta
+		if _alarm_t <= 0.0:
+			_alarm_t = lerpf(0.5, 0.12, clampf((load_k - 0.75) / 0.25, 0.0, 1.0))
+			Audio.play("overload_alarm", -6.0 + 6.0 * load_k, 1.0 + 0.3 * (load_k - 0.75))
+			if load_k > 0.9:
+				get_tree().call_group("game", "aberrate", 2.5)
+				get_tree().call_group("game", "impact", 1.5, Vector2.ZERO)
 		_smoke_t -= delta
 		if _smoke_t <= 0.0:
 			_smoke_t = 0.12 if load_k < 0.9 else 0.06
@@ -241,9 +250,10 @@ func _overload() -> void:
 	Fx.ring(world, at, 46.0)
 	Fx.sparks(world, at, Vector2.UP, 24, Color(1.0, 2.2, 2.4))
 	Fx.debris(world, at, Vector2.UP, 12, Color(0.3, 1.1, 1.25))
-	Audio.play("break", 0.0, 0.8)
+	Audio.play("overload", 0.0)
 	get_tree().call_group("game", "shockwave", at)
-	get_tree().call_group("game", "impact", 7.0, Vector2.ZERO)
+	get_tree().call_group("game", "impact", 9.0, Vector2.ZERO)
+	TimeFx.hitstop(0.08)
 	for n in get_tree().get_nodes_in_group("hittable"):
 		if n == shell or (n.has_method("alive") and not n.alive()):
 			continue
@@ -263,6 +273,15 @@ func _overload() -> void:
 	current = w
 	lock = null
 	shell_changed.emit(w)
+
+
+## 连击回报：负荷退 sec 秒（只在敌人壳里有意义）
+func relieve_load(sec: float) -> void:
+	if _load <= 0.0:
+		return
+	_load = maxf(_load - sec, 0.0)
+	var cap := load_time(current)
+	load_k = clampf(_load / cap, 0.0, 1.0) if cap > 0.0 else 0.0
 
 
 ## 光球超时：飞回本体后自动回到本体
